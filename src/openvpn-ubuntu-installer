@@ -1,0 +1,328 @@
+#!/bin/bash
+if [ $(id -u) -ne 0 ]; then #checking root
+  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo ./`basename $0`\"\e[39m\n"
+  exit 1
+fi
+
+############################################################################
+########## INFO ############################################################
+############################################################################
+### ABOUT:
+####### This script will setup OpenVPN on Ubuntu 16.04
+### AUTOHR:
+####### Amin Babaeipanah
+### VERSION:
+####### 1.57
+### USAGE:
+####### Change the variables below (variables to change)
+####### Run "chmod +x scriptName" to make it executable
+####### Run it using "sudo ./scriptName"
+####### Follow on-screen instructions
+
+############################################################################
+########## VARIABLES TO CHANGE #############################################
+############################################################################
+vpsSetup=0 #setup for vps=1 home=0
+vpnPort=443 #better to use 443
+vpnProto='tcp' #better to use tcp if using port 443
+vpnEmail='email@domain.com' #can be fake email
+vpnDomain='mydomain.com' #domain or ip of your openvpn server
+vpnName='Company-Name' #alphabetical name with no spaces, can be fake
+
+############################################################################
+########## INTERNAL VARIABLES ##############################################
+############################################################################
+netCard=`route | grep '^default' | grep -o '[^ ]*$'`
+gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
+lanip=`ifconfig | grep -A 1 $netCard | tail -1 | cut -d ':' -f 2 | cut -d ' ' -f 1`
+ip=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
+ovpnwc='https://swupdate.openvpn.org/community/releases/openvpn-install-2.4.0-I601.exe'
+
+############################################################################
+########## MOTDVARS ########################################################
+############################################################################
+setupDir="$(dirname $(readlink -f $0))"
+echo 'vpnPort='$vpnPort >> $setupDir/motdvars
+
+############################################################################
+########## MODIFYING NETWORK ADAPTERS ######################################
+############################################################################
+echo '1' > /proc/sys/net/ipv6/conf/lo/disable_ipv6
+echo '1' > /proc/sys/net/ipv6/conf/all/disable_ipv6
+echo '1' > /proc/sys/net/ipv6/conf/default/disable_ipv6
+echo '1' > /proc/sys/net/ipv4/ip_forward
+sed -i 's|#net.ipv4.ip_forward=1|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
+sysctl -p
+
+############################################################################
+########## INSTALLING PACKAGES #############################################
+############################################################################
+#systemctl status openvpn@server.service #see openvpn errors
+#systemctl daemon-reload
+#netstat -tulpn #check internet connections
+apt-get install openvpn easy-rsa -y
+if [ $vpsSetup == 1 ]; then sed -i 's|LimitNPROC=10|#LimitNPROC=10|g' /lib/systemd/system/openvpn@.service; fi
+if [ "`which openvpn`" = "" ]; then echo -ne "\033[31m [x] Required packages were not installed. Please try again later.\e[39m\n"; exit 1; fi
+cp -r /usr/share/easy-rsa/ /etc/openvpn
+
+############################################################################
+########## CLIENT SOFTWARE #################################################
+############################################################################
+if [ ! -d /etc/openvpn/easy-rsa/keys ]; then mkdir -p /etc/openvpn/easy-rsa/keys; fi
+if [ ! -d /keys/client ]; then mkdir -p /keys/client; fi
+wget $ovpnwc -O /keys/client/openvpn.exe
+rm -rf /keys/*.ovpn
+
+############################################################################
+########## GENERATING FILES ################################################
+############################################################################
+#generate vars
+mv /etc/openvpn/easy-rsa/vars /etc/openvpn/easy-rsa/vars.bak
+echo 'export EASY_RSA="`pwd`"' > /etc/openvpn/easy-rsa/vars
+echo 'export OPENSSL="openssl"' >> /etc/openvpn/easy-rsa/vars
+echo 'export PKCS11TOOL="pkcs11-tool"' >> /etc/openvpn/easy-rsa/vars
+echo 'export GREP="grep"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_DIR="$EASY_RSA/keys"' >> /etc/openvpn/easy-rsa/vars
+echo 'echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR' >> /etc/openvpn/easy-rsa/vars
+echo 'export PKCS11_MODULE_PATH=dummy' >> /etc/openvpn/easy-rsa/vars
+echo 'export PKCS11_PIN=dummy' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_ALTNAMES="dummy"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_SIZE=2048' >> /etc/openvpn/easy-rsa/vars
+echo 'export CA_EXPIRE=3650' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_EXPIRE=3650' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_COUNTRY="CA"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_PROVINCE="BC"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_CITY="Vancouver"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_ORG="'$vpnName'"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_EMAIL="'$vpnEmail'"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_CN="server"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_NAME="'$vpnName'"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_OU="CA.'$vpnName'.com"' >> /etc/openvpn/easy-rsa/vars
+echo 'export PKCS11_MODULE_PATH="dummy"' >> /etc/openvpn/easy-rsa/vars
+echo 'export PKCS11_PIN="dummy"' >> /etc/openvpn/easy-rsa/vars
+echo 'export PKCS11_LABEL="dummy"' >> /etc/openvpn/easy-rsa/vars
+echo 'export KEY_NAME="server"' >> /etc/openvpn/easy-rsa/vars
+#generate client vars
+echo 'export EASY_RSA="`pwd`"' > /etc/openvpn/easy-rsa/varsc
+echo 'export OPENSSL="openssl"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export PKCS11TOOL="pkcs11-tool"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export GREP="grep"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_DIR="$EASY_RSA/keys"' >> /etc/openvpn/easy-rsa/varsc
+echo 'echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR' >> /etc/openvpn/easy-rsa/varsc
+echo 'export PKCS11_MODULE_PATH=dummy' >> /etc/openvpn/easy-rsa/varsc
+echo 'export PKCS11_PIN=dummy' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_ALTNAMES="dummy"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_SIZE=2048' >> /etc/openvpn/easy-rsa/varsc
+echo 'export CA_EXPIRE=3650' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_EXPIRE=3650' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_COUNTRY="CA"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_PROVINCE="BC"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_CITY="Vancouver"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_ORG="'$vpnName'"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_EMAIL="'$vpnEmail'"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_CN="client"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_NAME="'$vpnName'"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_OU="CA.'$vpnName'.com"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export PKCS11_MODULE_PATH="dummy"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export PKCS11_PIN="dummy"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export PKCS11_LABEL="dummy"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export KEY_NAME="client"' >> /etc/openvpn/easy-rsa/varsc
+#generate server.conf
+echo 'port '$vpnPort > /etc/openvpn/server.conf
+echo 'proto '$vpnProto >> /etc/openvpn/server.conf
+echo 'dev tun' >> /etc/openvpn/server.conf
+echo 'ca ca.crt' >> /etc/openvpn/server.conf
+echo 'cert server.crt' >> /etc/openvpn/server.conf
+echo 'key server.key' >> /etc/openvpn/server.conf
+echo 'dh dh2048.pem' >> /etc/openvpn/server.conf
+echo '#crl-verify crl.pem' >> /etc/openvpn/server.conf
+echo 'server 10.8.0.0 255.255.255.0' >> /etc/openvpn/server.conf
+echo 'ifconfig-pool-persist ipp.txt' >> /etc/openvpn/server.conf
+echo 'keepalive 5 30' >> /etc/openvpn/server.conf
+echo '#cipher none' >> /etc/openvpn/server.conf
+echo 'cipher AES-128-CBC' >> /etc/openvpn/server.conf
+echo '#cipher AES-256-CBC' >> /etc/openvpn/server.conf
+echo '#cipher BF-CBC' >> /etc/openvpn/server.conf
+echo 'auth SHA256' >> /etc/openvpn/server.conf
+echo '#comp-lzo' >> /etc/openvpn/server.conf
+echo '#client-to-client' >> /etc/openvpn/server.conf
+echo 'persist-key' >> /etc/openvpn/server.conf
+echo 'persist-tun' >> /etc/openvpn/server.conf
+echo 'status openvpn-status.log' >> /etc/openvpn/server.conf
+echo 'verb 3' >> /etc/openvpn/server.conf
+echo 'tun-mtu 1500' >> /etc/openvpn/server.conf
+echo '#tun-mtu-extra 32' >> /etc/openvpn/server.conf
+echo 'mssfix 1450' >> /etc/openvpn/server.conf
+echo 'push "redirect-gateway def1 bypass-dhcp"' >> /etc/openvpn/server.conf
+if [ $gateway ]; then #gateway found
+	echo 'push "dhcp-option DNS '$gateway'"' >> /etc/openvpn/server.conf
+	echo '#push "dhcp-option DNS 8.8.8.8"' >> /etc/openvpn/server.conf
+	echo '#push "dhcp-option DNS 8.8.4.4"' >> /etc/openvpn/server.conf
+else #gateway not found. use google dns
+	echo '#push "dhcp-option DNS '$gateway'"' >> /etc/openvpn/server.conf
+	echo 'push "dhcp-option DNS 8.8.8.8"' >> /etc/openvpn/server.conf
+	echo 'push "dhcp-option DNS 8.8.4.4"' >> /etc/openvpn/server.conf
+fi
+echo 'tls-auth ta.key 0 # This file is secret' >> /etc/openvpn/server.conf
+echo 'tls-server' >> /etc/openvpn/server.conf
+echo 'key-direction 0' >> /etc/openvpn/server.conf
+#generate client ovpn
+echo 'client' > /etc/openvpn/client.ovpn
+echo 'tls-client' >> /etc/openvpn/client.ovpn
+echo 'dev tun' >> /etc/openvpn/client.ovpn
+echo 'proto '$vpnProto >> /etc/openvpn/client.ovpn
+echo 'remote '$vpnDomain' '$vpnPort >> /etc/openvpn/client.ovpn
+echo 'resolv-retry infinite' >> /etc/openvpn/client.ovpn
+echo 'nobind' >> /etc/openvpn/client.ovpn
+echo 'persist-key' >> /etc/openvpn/client.ovpn
+echo 'persist-tun' >> /etc/openvpn/client.ovpn
+echo 'ns-cert-type server' >> /etc/openvpn/client.ovpn
+echo '#cipher none' >> /etc/openvpn/client.ovpn
+echo 'cipher AES-128-CBC' >> /etc/openvpn/client.ovpn
+echo '#cipher AES-256-CBC' >> /etc/openvpn/client.ovpn
+echo '#cipher BF-CBC' >> /etc/openvpn/client.ovpn
+echo 'auth SHA256' >> /etc/openvpn/client.ovpn
+echo '#comp-lzo' >> /etc/openvpn/client.ovpn
+echo 'verb 3' >> /etc/openvpn/client.ovpn
+echo '#ca ca.crt' >> /etc/openvpn/client.ovpn
+echo '#cert client.crt' >> /etc/openvpn/client.ovpn
+echo '#key client.key' >> /etc/openvpn/client.ovpn
+echo 'key-direction 1' >> /etc/openvpn/client.ovpn
+#making server lic
+cd /etc/openvpn/easy-rsa/
+ln -s openssl-1.0.0.cnf openssl.cnf
+perl -p -i -e 's|^(subjectAltName=)|#$1|;' /etc/openvpn/easy-rsa/openssl-1.0.0.cnf #fix Error Loading extension section usr_cert
+echo -ne "\e[33m [!] Press [Enter] 18 times then [Y] twice when prompted.\e[39m\n"
+. ./vars
+./clean-all
+./build-ca --batch
+./build-key-server --batch server
+./build-dh
+openvpn --genkey --secret keys/ta.key
+cd /etc/openvpn/easy-rsa/keys
+cp ca.crt ca.key dh2048.pem server.crt server.key ta.key /etc/openvpn
+#generate lmvpna
+echo '#!/bin/bash' > /usr/sbin/lmvpna
+echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpna
+echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpna
+echo '  exit 1' >> /usr/sbin/lmvpna
+echo 'fi' >> /usr/sbin/lmvpna
+echo 'echo -ne "\e[94m [?] What is the name of OpenVPN user license? \e[39m"' >> /usr/sbin/lmvpna
+echo 'read licname' >> /usr/sbin/lmvpna
+echo 'cd /etc/openvpn/easy-rsa' >> /usr/sbin/lmvpna
+echo '. ./varsc' >> /usr/sbin/lmvpna
+echo 'export KEY_CN="$licname"' >> /usr/sbin/lmvpna
+echo 'export KEY_NAME="$licname"' >> /usr/sbin/lmvpna
+echo './build-key --batch $licname' >> /usr/sbin/lmvpna
+echo 'cd /etc/openvpn/easy-rsa/keys' >> /usr/sbin/lmvpna
+echo 'cp /etc/openvpn/client.ovpn /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "<ca>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /etc/openvpn/easy-rsa/keys/ca.crt >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "</ca>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "<cert>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /etc/openvpn/easy-rsa/keys/$licname.crt >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "</cert>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "<key>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /etc/openvpn/easy-rsa/keys/$licname.key >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "</key>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "<tls-auth>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /etc/openvpn/easy-rsa/keys/ta.key >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo "</tls-auth>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'echo -ne "\033[32m [i] Your new license is located at \"/keys/\".\e[39m\n"' >> /usr/sbin/lmvpna
+chmod +x /usr/sbin/lmvpna
+#generate lmvpnd
+echo '#!/bin/bash' > /usr/sbin/lmvpnd
+echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpnd
+echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpnd
+echo '  exit 1' >> /usr/sbin/lmvpnd
+echo 'fi' >> /usr/sbin/lmvpnd
+echo 'cat /etc/openvpn/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnd
+echo 'echo -ne "\e[94m [?] Which certificate do you want to revoke? \e[39m"' >> /usr/sbin/lmvpnd
+echo 'read certname' >> /usr/sbin/lmvpnd
+echo 'cd /etc/openvpn/easy-rsa' >> /usr/sbin/lmvpnd
+echo '. ./vars' >> /usr/sbin/lmvpnd
+echo './revoke-full $certname' >> /usr/sbin/lmvpnd
+echo 'cp /etc/openvpn/easy-rsa/keys/crl.pem /etc/openvpn' >> /usr/sbin/lmvpnd
+echo 'sed -i "s|#crl-verify crl.pem|crl-verify crl.pem|g" /etc/openvpn/server.conf' >> /usr/sbin/lmvpnd
+echo 'lmvpnr' >> /usr/sbin/lmvpnd
+echo 'echo -ne "\033[32m [i] Certificate revoked successfully. Check the index below:\e[39m\n"' >> /usr/sbin/lmvpnd
+echo 'cat /etc/openvpn/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnd
+chmod +x /usr/sbin/lmvpnd
+#generate lmvpnl
+echo '#!/bin/bash' > /usr/sbin/lmvpnl
+echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpnl
+echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpnl
+echo '  exit 1' >> /usr/sbin/lmvpnl
+echo 'fi' >> /usr/sbin/lmvpnl
+echo 'cat /etc/openvpn/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnl
+chmod +x /usr/sbin/lmvpnl
+#generate lmvpnr
+echo '#!/bin/bash' > /usr/sbin/lmvpnr
+echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpnr
+echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpnr
+echo '  exit 1' >> /usr/sbin/lmvpnr
+echo 'fi' >> /usr/sbin/lmvpnr
+echo 'service openvpn restart' >> /usr/sbin/lmvpnr
+echo 'if [ "$(pgrep openvpn)" ]; then echo -ne "\033[32m [i] OpenVPN restarted successfully.\e[39m\n"; else echo -ne "\033[31m [x] OpenVPN is not running!\e[39m\n"; fi' >> /usr/sbin/lmvpnr
+chmod +x /usr/sbin/lmvpnr
+#generate lmvpns
+echo '#!/bin/bash' > /usr/sbin/lmvpns
+echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpns
+echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpns
+echo '  exit 1' >> /usr/sbin/lmvpns
+echo 'fi' >> /usr/sbin/lmvpns
+echo 'journalctl -u openvpn@server.service -f -n 30' >> /usr/sbin/lmvpns
+chmod +x /usr/sbin/lmvpns
+
+############################################################################
+########## FIREWALL SETUP ##################################################
+############################################################################
+#delete previous iptables
+iptables -D INPUT -i $netCard -p $vpnProto --dport $vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -D INPUT -i tun+ -j ACCEPT
+iptables -D FORWARD -i tun+ -j ACCEPT
+iptables -D FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -D FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+if [ $vpsSetup == 1 ]; then
+	iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -j SNAT --to-source $ip
+else
+	iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
+fi
+iptables -D OUTPUT -o tun+ -j ACCEPT
+#add them back
+iptables -A INPUT -i $netCard -p $vpnProto --dport $vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -i tun+ -j ACCEPT
+iptables -A FORWARD -i tun+ -j ACCEPT
+iptables -A FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+if [ $vpsSetup == 1 ]; then
+	iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j SNAT --to-source $ip
+else
+	iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
+fi
+iptables -A OUTPUT -o tun+ -j ACCEPT
+#iptables save/load
+echo '#!/bin/bash' > /etc/network/if-post-down.d/iptasave
+echo 'iptables-save -c > /etc/iptables.rules' >> /etc/network/if-post-down.d/iptasave
+echo 'exit 0' >> /etc/network/if-post-down.d/iptasave
+chmod +x /etc/network/if-post-down.d/iptasave
+echo '#!/bin/bash' > /etc/network/if-pre-up.d/iptaload
+echo 'iptables-restore < /etc/iptables.rules' >> /etc/network/if-pre-up.d/iptaload
+echo 'exit 0' >> /etc/network/if-pre-up.d/iptaload
+chmod +x /etc/network/if-pre-up.d/iptaload
+
+############################################################################
+########## FINISHING #######################################################
+############################################################################
+systemctl daemon-reload #reload to apply the fix
+service openvpn restart
+echo -ne "\033[32m [i] OpenVPN setup is done.\e[39m\n"
+echo -ne "\033[32m         To add a client use \"sudo lmvpna\".\e[39m\n"
+echo -ne "\033[32m         To delete (revoke) a client use \"sudo lmvpnd\".\e[39m\n"
+echo -ne "\033[32m         To list clients use \"sudo lmvpnl\".\e[39m\n"
+echo -ne "\033[32m         To restart OpenVPN service use \"sudo lmvpnr\".\e[39m\n"
+echo -ne "\033[32m         To see status use \"sudo lmvpns\".\e[39m\n"
+echo -ne "\e[33m [!] Open port $vpnPort on you router.\e[39m\n"
+sleep 2
