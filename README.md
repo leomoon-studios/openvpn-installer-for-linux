@@ -1,3 +1,4 @@
+# OpenVPN Ubuntu Installer
 ## Introduction
 
 Having your own self hosted OpenVPN is very important these days but setting one up can be very tedious! This script makes it very easy for anyone to setup their own OpenVPN server at home.
