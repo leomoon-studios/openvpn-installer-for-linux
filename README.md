@@ -13,7 +13,7 @@ Having your own self hosted OpenVPN is very important these days but setting one
 
 ## Donations
 
-Future development of this project depends on community donations. All proceeds will go towards the development. You can donate using [[THIS LINK]](https://www.paypal.me/aminpersia) and make sure to include which project you want to support.
+Future development of this project depends on community donations. All proceeds will go towards the development. You can donate using [[THIS LINK]](https://www.paypal.me/leomoon) and make sure to include which project you want to support.
 
 ## Donors
 
