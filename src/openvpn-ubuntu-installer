@@ -12,7 +12,23 @@ fi
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### VERSION:
-####### 1.57
+####### 1.58
+### CHANGELOG:
+####### Added auth-nocache to stop password caching of OpenVPN
+####### Changed deprecated ns-cert-type to --remote-cert-tls
+####### Removed unnecessary echo command
+####### Firewall fix
+####### KEY_NAME will have the same name as client
+####### KEY_CN will have the same name as client
+####### Added gateway detection. if not found, google dns will be used
+####### Automated key generation for both server and user
+####### Added openvpn restart after revoking a license
+####### Fixed "'link-mtu' is used inconsistently" warning message
+####### Changed RSA to 2048
+####### Added tls-auth and SHA256
+####### Fixed lmvpnd not revoking lics
+####### Fixed netCard variable
+####### Updated Windows client URL
 ### USAGE:
 ####### Change the variables below (variables to change)
 ####### Run "chmod +x scriptName" to make it executable
@@ -178,7 +194,7 @@ echo 'resolv-retry infinite' >> /etc/openvpn/client.ovpn
 echo 'nobind' >> /etc/openvpn/client.ovpn
 echo 'persist-key' >> /etc/openvpn/client.ovpn
 echo 'persist-tun' >> /etc/openvpn/client.ovpn
-echo 'ns-cert-type server' >> /etc/openvpn/client.ovpn
+echo '--remote-cert-tls server' >> /etc/openvpn/client.ovpn
 echo '#cipher none' >> /etc/openvpn/client.ovpn
 echo 'cipher AES-128-CBC' >> /etc/openvpn/client.ovpn
 echo '#cipher AES-256-CBC' >> /etc/openvpn/client.ovpn
@@ -190,11 +206,11 @@ echo '#ca ca.crt' >> /etc/openvpn/client.ovpn
 echo '#cert client.crt' >> /etc/openvpn/client.ovpn
 echo '#key client.key' >> /etc/openvpn/client.ovpn
 echo 'key-direction 1' >> /etc/openvpn/client.ovpn
+echo 'auth-nocache' >> /etc/openvpn/client.ovpn
 #making server lic
 cd /etc/openvpn/easy-rsa/
 ln -s openssl-1.0.0.cnf openssl.cnf
 perl -p -i -e 's|^(subjectAltName=)|#$1|;' /etc/openvpn/easy-rsa/openssl-1.0.0.cnf #fix Error Loading extension section usr_cert
-echo -ne "\e[33m [!] Press [Enter] 18 times then [Y] twice when prompted.\e[39m\n"
 . ./vars
 ./clean-all
 ./build-ca --batch
