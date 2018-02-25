@@ -25,6 +25,10 @@ Future development of this project depends on community donations. All proceeds 
 
 ## Changelog
 
+*   1.58:
+    *   Added auth-nocache to stop password caching of OpenVPN
+    *   Changed deprecated ns-cert-type to --remote-cert-tls
+    *   Removed unnecessary echo command
 *   1.57:
     *   Minor bugfix
 *   1.56:
