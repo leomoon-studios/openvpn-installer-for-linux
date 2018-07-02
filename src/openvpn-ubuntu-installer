@@ -12,7 +12,7 @@ fi
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### VERSION:
-####### 1.58
+####### 1.59
 ### CHANGELOG:
 ####### Fixed lanip
 ####### Fixed iptables not saving in Ubuntu 18.04
