@@ -8,12 +8,14 @@ fi
 ########## INFO ############################################################
 ############################################################################
 ### ABOUT:
-####### This script will setup OpenVPN on Ubuntu 16.04
+####### This script will setup OpenVPN on Ubuntu
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### VERSION:
 ####### 1.58
 ### CHANGELOG:
+####### Fixed lanip
+####### Fixed iptables not saving in Ubuntu 18.04
 ####### Added auth-nocache to stop password caching of OpenVPN
 ####### Changed deprecated ns-cert-type to --remote-cert-tls
 ####### Removed unnecessary echo command
@@ -44,13 +46,14 @@ vpnProto='tcp' #better to use tcp if using port 443
 vpnEmail='email@domain.com' #can be fake email
 vpnDomain='mydomain.com' #domain or ip of your openvpn server
 vpnName='Company-Name' #alphabetical name with no spaces, can be fake
+setup_iptablespersistent=1 #setup iptables-persistent to save firewall settings
 
 ############################################################################
 ########## INTERNAL VARIABLES ##############################################
 ############################################################################
 netCard=`route | grep '^default' | grep -o '[^ ]*$'`
 gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
-lanip=`ifconfig | grep -A 1 $netCard | tail -1 | cut -d ':' -f 2 | cut -d ' ' -f 1`
+lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
 ip=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
 ovpnwc='https://swupdate.openvpn.org/community/releases/openvpn-install-2.4.0-I601.exe'
 
@@ -147,7 +150,7 @@ echo 'export PKCS11_LABEL="dummy"' >> /etc/openvpn/easy-rsa/varsc
 echo 'export KEY_NAME="client"' >> /etc/openvpn/easy-rsa/varsc
 #generate server.conf
 echo 'port '$vpnPort > /etc/openvpn/server.conf
-echo 'proto '$vpnProto >> /etc/openvpn/server.conf
+echo 'proto '$vpnProto'4' >> /etc/openvpn/server.conf
 echo 'dev tun' >> /etc/openvpn/server.conf
 echo 'ca ca.crt' >> /etc/openvpn/server.conf
 echo 'cert server.crt' >> /etc/openvpn/server.conf
@@ -188,7 +191,7 @@ echo 'key-direction 0' >> /etc/openvpn/server.conf
 echo 'client' > /etc/openvpn/client.ovpn
 echo 'tls-client' >> /etc/openvpn/client.ovpn
 echo 'dev tun' >> /etc/openvpn/client.ovpn
-echo 'proto '$vpnProto >> /etc/openvpn/client.ovpn
+echo 'proto '$vpnProto'4' >> /etc/openvpn/client.ovpn
 echo 'remote '$vpnDomain' '$vpnPort >> /etc/openvpn/client.ovpn
 echo 'resolv-retry infinite' >> /etc/openvpn/client.ovpn
 echo 'nobind' >> /etc/openvpn/client.ovpn
@@ -319,15 +322,18 @@ else
 	iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
 fi
 iptables -A OUTPUT -o tun+ -j ACCEPT
-#iptables save/load
-echo '#!/bin/bash' > /etc/network/if-post-down.d/iptasave
-echo 'iptables-save -c > /etc/iptables.rules' >> /etc/network/if-post-down.d/iptasave
-echo 'exit 0' >> /etc/network/if-post-down.d/iptasave
-chmod +x /etc/network/if-post-down.d/iptasave
-echo '#!/bin/bash' > /etc/network/if-pre-up.d/iptaload
-echo 'iptables-restore < /etc/iptables.rules' >> /etc/network/if-pre-up.d/iptaload
-echo 'exit 0' >> /etc/network/if-pre-up.d/iptaload
-chmod +x /etc/network/if-pre-up.d/iptaload
+
+############################################################################
+########## SETUP IPTABLES-PERSISTENT #######################################
+############################################################################
+if [ $setup_iptablespersistent == 1 ]; then
+	debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v4 boolean true"
+	debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v6 boolean true"
+	apt-get install iptables-persistent -y
+	#setup service for iptables-persistent
+	service netfilter-persistent start
+	invoke-rc.d netfilter-persistent save
+fi
 
 ############################################################################
 ########## FINISHING #######################################################
