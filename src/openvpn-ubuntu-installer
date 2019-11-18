@@ -8,12 +8,13 @@ fi
 ########## INFO ############################################################
 ############################################################################
 ### ABOUT:
-####### This script will setup OpenVPN on Ubuntu
+####### This script will setup OpenVPN on Ubuntu 18.04
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### VERSION:
-####### 1.59
+####### 1.60
 ### CHANGELOG:
+####### Fixed 18.04 issues
 ####### Fixed lanip
 ####### Fixed iptables not saving in Ubuntu 18.04
 ####### Added auth-nocache to stop password caching of OpenVPN
@@ -55,13 +56,6 @@ netCard=`route | grep '^default' | grep -o '[^ ]*$'`
 gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
 lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
 ip=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
-ovpnwc='https://swupdate.openvpn.org/community/releases/openvpn-install-2.4.0-I601.exe'
-
-############################################################################
-########## MOTDVARS ########################################################
-############################################################################
-setupDir="$(dirname $(readlink -f $0))"
-echo 'vpnPort='$vpnPort >> $setupDir/motdvars
 
 ############################################################################
 ########## MODIFYING NETWORK ADAPTERS ######################################
@@ -87,9 +81,8 @@ cp -r /usr/share/easy-rsa/ /etc/openvpn
 ############################################################################
 ########## CLIENT SOFTWARE #################################################
 ############################################################################
-if [ ! -d /etc/openvpn/easy-rsa/keys ]; then mkdir -p /etc/openvpn/easy-rsa/keys; fi
-if [ ! -d /keys/client ]; then mkdir -p /keys/client; fi
-wget $ovpnwc -O /keys/client/openvpn.exe
+#if [ ! -d /etc/openvpn/easy-rsa/keys ]; then mkdir -p /etc/openvpn/easy-rsa/keys; fi
+if [ ! -d /usr/share/easy-rsa/keys ]; then mkdir -p /usr/share/easy-rsa/keys; fi
 rm -rf /keys/*.ovpn
 
 ############################################################################
@@ -211,16 +204,16 @@ echo '#key client.key' >> /etc/openvpn/client.ovpn
 echo 'key-direction 1' >> /etc/openvpn/client.ovpn
 echo 'auth-nocache' >> /etc/openvpn/client.ovpn
 #making server lic
-cd /etc/openvpn/easy-rsa/
-ln -s openssl-1.0.0.cnf openssl.cnf
+ln -s /usr/share/easy-rsa/openssl-1.0.0.cnf /usr/share/easy-rsa/openssl.cnf
 perl -p -i -e 's|^(subjectAltName=)|#$1|;' /etc/openvpn/easy-rsa/openssl-1.0.0.cnf #fix Error Loading extension section usr_cert
+cd /usr/share/easy-rsa
 . ./vars
 ./clean-all
 ./build-ca --batch
 ./build-key-server --batch server
 ./build-dh
 openvpn --genkey --secret keys/ta.key
-cd /etc/openvpn/easy-rsa/keys
+cd /usr/share/easy-rsa/keys
 cp ca.crt ca.key dh2048.pem server.crt server.key ta.key /etc/openvpn
 #generate lmvpna
 echo '#!/bin/bash' > /usr/sbin/lmvpna
@@ -230,24 +223,24 @@ echo '  exit 1' >> /usr/sbin/lmvpna
 echo 'fi' >> /usr/sbin/lmvpna
 echo 'echo -ne "\e[94m [?] What is the name of OpenVPN user license? \e[39m"' >> /usr/sbin/lmvpna
 echo 'read licname' >> /usr/sbin/lmvpna
-echo 'cd /etc/openvpn/easy-rsa' >> /usr/sbin/lmvpna
+echo 'cd /usr/share/easy-rsa' >> /usr/sbin/lmvpna
 echo '. ./varsc' >> /usr/sbin/lmvpna
 echo 'export KEY_CN="$licname"' >> /usr/sbin/lmvpna
 echo 'export KEY_NAME="$licname"' >> /usr/sbin/lmvpna
 echo './build-key --batch $licname' >> /usr/sbin/lmvpna
-echo 'cd /etc/openvpn/easy-rsa/keys' >> /usr/sbin/lmvpna
+echo 'cd /usr/share/easy-rsa/keys' >> /usr/sbin/lmvpna
 echo 'cp /etc/openvpn/client.ovpn /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "<ca>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
-echo 'cat /etc/openvpn/easy-rsa/keys/ca.crt >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /usr/share/easy-rsa/keys/ca.crt >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "</ca>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "<cert>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
-echo 'cat /etc/openvpn/easy-rsa/keys/$licname.crt >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /usr/share/easy-rsa/keys/$licname.crt >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "</cert>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "<key>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
-echo 'cat /etc/openvpn/easy-rsa/keys/$licname.key >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /usr/share/easy-rsa/keys/$licname.key >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "</key>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "<tls-auth>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
-echo 'cat /etc/openvpn/easy-rsa/keys/ta.key >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
+echo 'cat /usr/share/easy-rsa/keys/ta.key >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo "</tls-auth>" >> /keys/$licname.ovpn' >> /usr/sbin/lmvpna
 echo 'echo -ne "\033[32m [i] Your new license is located at \"/keys/\".\e[39m\n"' >> /usr/sbin/lmvpna
 chmod +x /usr/sbin/lmvpna
@@ -257,17 +250,17 @@ echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpnd
 echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpnd
 echo '  exit 1' >> /usr/sbin/lmvpnd
 echo 'fi' >> /usr/sbin/lmvpnd
-echo 'cat /etc/openvpn/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnd
+echo 'cat /usr/share/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnd
 echo 'echo -ne "\e[94m [?] Which certificate do you want to revoke? \e[39m"' >> /usr/sbin/lmvpnd
 echo 'read certname' >> /usr/sbin/lmvpnd
-echo 'cd /etc/openvpn/easy-rsa' >> /usr/sbin/lmvpnd
+echo 'cd /usr/share/easy-rsa' >> /usr/sbin/lmvpnd
 echo '. ./vars' >> /usr/sbin/lmvpnd
 echo './revoke-full $certname' >> /usr/sbin/lmvpnd
-echo 'cp /etc/openvpn/easy-rsa/keys/crl.pem /etc/openvpn' >> /usr/sbin/lmvpnd
+echo 'cp /usr/share/easy-rsa/keys/crl.pem /etc/openvpn' >> /usr/sbin/lmvpnd
 echo 'sed -i "s|#crl-verify crl.pem|crl-verify crl.pem|g" /etc/openvpn/server.conf' >> /usr/sbin/lmvpnd
 echo 'lmvpnr' >> /usr/sbin/lmvpnd
 echo 'echo -ne "\033[32m [i] Certificate revoked successfully. Check the index below:\e[39m\n"' >> /usr/sbin/lmvpnd
-echo 'cat /etc/openvpn/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnd
+echo 'cat /usr/share/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnd
 chmod +x /usr/sbin/lmvpnd
 #generate lmvpnl
 echo '#!/bin/bash' > /usr/sbin/lmvpnl
@@ -275,7 +268,7 @@ echo 'if [ $(id -u) -ne 0 ]; then #checking root' >> /usr/sbin/lmvpnl
 echo '  echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"' >> /usr/sbin/lmvpnl
 echo '  exit 1' >> /usr/sbin/lmvpnl
 echo 'fi' >> /usr/sbin/lmvpnl
-echo 'cat /etc/openvpn/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnl
+echo 'cat /usr/share/easy-rsa/keys/index.txt' >> /usr/sbin/lmvpnl
 chmod +x /usr/sbin/lmvpnl
 #generate lmvpnr
 echo '#!/bin/bash' > /usr/sbin/lmvpnr
