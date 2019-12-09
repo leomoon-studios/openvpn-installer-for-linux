@@ -12,8 +12,9 @@ fi
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### VERSION:
-####### 1.60
+####### 1.61
 ### CHANGELOG:
+####### Fixed more issues caused by openvpn changes
 ####### Fixed 18.04 issues
 ####### Fixed lanip
 ####### Fixed iptables not saving in Ubuntu 18.04
@@ -41,12 +42,12 @@ fi
 ############################################################################
 ########## VARIABLES TO CHANGE #############################################
 ############################################################################
-vpsSetup=0 #setup for vps=1 home=0
-vpnPort=443 #better to use 443
-vpnProto='tcp' #better to use tcp if using port 443
-vpnEmail='email@domain.com' #can be fake email
-vpnDomain='mydomain.com' #domain or ip of your openvpn server
-vpnName='Company-Name' #alphabetical name with no spaces, can be fake
+ovpn2kSetup_vpsSetup=0 #setup for vps=1 home=0
+ovpn2kSetup_vpnPort=443 #better to use 443
+ovpn2kSetup_vpnProto='tcp' #better to use tcp if using port 443
+ovpn2kSetup_vpnEmail='email@domain.com' #can be fake email
+ovpn2kSetup_vpnDomain='mydomain.com' #domain or ip of your openvpn server
+ovpn2kSetup_vpnName='Company-Name' #alphabetical name with no spaces, can be fake
 setup_iptablespersistent=1 #setup iptables-persistent to save firewall settings
 
 ############################################################################
@@ -76,74 +77,75 @@ sysctl -p
 apt-get install openvpn easy-rsa -y
 if [ $vpsSetup == 1 ]; then sed -i 's|LimitNPROC=10|#LimitNPROC=10|g' /lib/systemd/system/openvpn@.service; fi
 if [ "`which openvpn`" = "" ]; then echo -ne "\033[31m [x] Required packages were not installed. Please try again later.\e[39m\n"; exit 1; fi
-cp -r /usr/share/easy-rsa/ /etc/openvpn
+#cp -r /usr/share/easy-rsa/ /etc/openvpn
 
 ############################################################################
 ########## CLIENT SOFTWARE #################################################
 ############################################################################
 #if [ ! -d /etc/openvpn/easy-rsa/keys ]; then mkdir -p /etc/openvpn/easy-rsa/keys; fi
 if [ ! -d /usr/share/easy-rsa/keys ]; then mkdir -p /usr/share/easy-rsa/keys; fi
+if [ ! -d /keys ]; then mkdir -p /keys; fi
 rm -rf /keys/*.ovpn
 
 ############################################################################
 ########## GENERATING FILES ################################################
 ############################################################################
 #generate vars
-mv /etc/openvpn/easy-rsa/vars /etc/openvpn/easy-rsa/vars.bak
-echo 'export EASY_RSA="`pwd`"' > /etc/openvpn/easy-rsa/vars
-echo 'export OPENSSL="openssl"' >> /etc/openvpn/easy-rsa/vars
-echo 'export PKCS11TOOL="pkcs11-tool"' >> /etc/openvpn/easy-rsa/vars
-echo 'export GREP="grep"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_DIR="$EASY_RSA/keys"' >> /etc/openvpn/easy-rsa/vars
-echo 'echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR' >> /etc/openvpn/easy-rsa/vars
-echo 'export PKCS11_MODULE_PATH=dummy' >> /etc/openvpn/easy-rsa/vars
-echo 'export PKCS11_PIN=dummy' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_ALTNAMES="dummy"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_SIZE=2048' >> /etc/openvpn/easy-rsa/vars
-echo 'export CA_EXPIRE=3650' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_EXPIRE=3650' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_COUNTRY="CA"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_PROVINCE="BC"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_CITY="Vancouver"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_ORG="'$vpnName'"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_EMAIL="'$vpnEmail'"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_CN="server"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_NAME="'$vpnName'"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_OU="CA.'$vpnName'.com"' >> /etc/openvpn/easy-rsa/vars
-echo 'export PKCS11_MODULE_PATH="dummy"' >> /etc/openvpn/easy-rsa/vars
-echo 'export PKCS11_PIN="dummy"' >> /etc/openvpn/easy-rsa/vars
-echo 'export PKCS11_LABEL="dummy"' >> /etc/openvpn/easy-rsa/vars
-echo 'export KEY_NAME="server"' >> /etc/openvpn/easy-rsa/vars
+mv /usr/share/easy-rsa/vars /usr/share/easy-rsa/vars.bak
+echo 'export EASY_RSA="`pwd`"' > /usr/share/easy-rsa/vars
+echo 'export OPENSSL="openssl"' >> /usr/share/easy-rsa/vars
+echo 'export PKCS11TOOL="pkcs11-tool"' >> /usr/share/easy-rsa/vars
+echo 'export GREP="grep"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`' >> /usr/share/easy-rsa/vars
+echo 'export KEY_DIR="$EASY_RSA/keys"' >> /usr/share/easy-rsa/vars
+echo 'echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR' >> /usr/share/easy-rsa/vars
+echo 'export PKCS11_MODULE_PATH=dummy' >> /usr/share/easy-rsa/vars
+echo 'export PKCS11_PIN=dummy' >> /usr/share/easy-rsa/vars
+echo 'export KEY_ALTNAMES="dummy"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_SIZE=2048' >> /usr/share/easy-rsa/vars
+echo 'export CA_EXPIRE=3650' >> /usr/share/easy-rsa/vars
+echo 'export KEY_EXPIRE=3650' >> /usr/share/easy-rsa/vars
+echo 'export KEY_COUNTRY="CA"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_PROVINCE="BC"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_CITY="Vancouver"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_ORG="'$ovpn2kSetup_vpnName'"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_EMAIL="'$ovpn2kSetup_vpnEmail'"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_CN="server"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_NAME="'$ovpn2kSetup_vpnName'"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_OU="CA.'$ovpn2kSetup_vpnName'.com"' >> /usr/share/easy-rsa/vars
+echo 'export PKCS11_MODULE_PATH="dummy"' >> /usr/share/easy-rsa/vars
+echo 'export PKCS11_PIN="dummy"' >> /usr/share/easy-rsa/vars
+echo 'export PKCS11_LABEL="dummy"' >> /usr/share/easy-rsa/vars
+echo 'export KEY_NAME="server"' >> /usr/share/easy-rsa/vars
 #generate client vars
-echo 'export EASY_RSA="`pwd`"' > /etc/openvpn/easy-rsa/varsc
-echo 'export OPENSSL="openssl"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export PKCS11TOOL="pkcs11-tool"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export GREP="grep"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_DIR="$EASY_RSA/keys"' >> /etc/openvpn/easy-rsa/varsc
-echo 'echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR' >> /etc/openvpn/easy-rsa/varsc
-echo 'export PKCS11_MODULE_PATH=dummy' >> /etc/openvpn/easy-rsa/varsc
-echo 'export PKCS11_PIN=dummy' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_ALTNAMES="dummy"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_SIZE=2048' >> /etc/openvpn/easy-rsa/varsc
-echo 'export CA_EXPIRE=3650' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_EXPIRE=3650' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_COUNTRY="CA"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_PROVINCE="BC"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_CITY="Vancouver"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_ORG="'$vpnName'"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_EMAIL="'$vpnEmail'"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_CN="client"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_NAME="'$vpnName'"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_OU="CA.'$vpnName'.com"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export PKCS11_MODULE_PATH="dummy"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export PKCS11_PIN="dummy"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export PKCS11_LABEL="dummy"' >> /etc/openvpn/easy-rsa/varsc
-echo 'export KEY_NAME="client"' >> /etc/openvpn/easy-rsa/varsc
+echo 'export EASY_RSA="`pwd`"' > /usr/share/easy-rsa/varsc
+echo 'export OPENSSL="openssl"' >> /usr/share/easy-rsa/varsc
+echo 'export PKCS11TOOL="pkcs11-tool"' >> /usr/share/easy-rsa/varsc
+echo 'export GREP="grep"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_DIR="$EASY_RSA/keys"' >> /usr/share/easy-rsa/varsc
+echo 'echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR' >> /usr/share/easy-rsa/varsc
+echo 'export PKCS11_MODULE_PATH=dummy' >> /usr/share/easy-rsa/varsc
+echo 'export PKCS11_PIN=dummy' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_ALTNAMES="dummy"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_SIZE=2048' >> /usr/share/easy-rsa/varsc
+echo 'export CA_EXPIRE=3650' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_EXPIRE=3650' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_COUNTRY="CA"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_PROVINCE="BC"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_CITY="Vancouver"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_ORG="'$ovpn2kSetup_vpnName'"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_EMAIL="'$ovpn2kSetup_vpnEmail'"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_CN="client"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_NAME="'$ovpn2kSetup_vpnName'"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_OU="CA.'$ovpn2kSetup_vpnName'.com"' >> /usr/share/easy-rsa/varsc
+echo 'export PKCS11_MODULE_PATH="dummy"' >> /usr/share/easy-rsa/varsc
+echo 'export PKCS11_PIN="dummy"' >> /usr/share/easy-rsa/varsc
+echo 'export PKCS11_LABEL="dummy"' >> /usr/share/easy-rsa/varsc
+echo 'export KEY_NAME="client"' >> /usr/share/easy-rsa/varsc
 #generate server.conf
-echo 'port '$vpnPort > /etc/openvpn/server.conf
-echo 'proto '$vpnProto'4' >> /etc/openvpn/server.conf
+echo 'port '$ovpn2kSetup_vpnPort > /etc/openvpn/server.conf
+echo 'proto '$ovpn2kSetup_vpnProto'4' >> /etc/openvpn/server.conf
 echo 'dev tun' >> /etc/openvpn/server.conf
 echo 'ca ca.crt' >> /etc/openvpn/server.conf
 echo 'cert server.crt' >> /etc/openvpn/server.conf
@@ -184,8 +186,8 @@ echo 'key-direction 0' >> /etc/openvpn/server.conf
 echo 'client' > /etc/openvpn/client.ovpn
 echo 'tls-client' >> /etc/openvpn/client.ovpn
 echo 'dev tun' >> /etc/openvpn/client.ovpn
-echo 'proto '$vpnProto'4' >> /etc/openvpn/client.ovpn
-echo 'remote '$vpnDomain' '$vpnPort >> /etc/openvpn/client.ovpn
+echo 'proto '$ovpn2kSetup_vpnProto'4' >> /etc/openvpn/client.ovpn
+echo 'remote '$ovpn2kSetup_vpnDomain' '$ovpn2kSetup_vpnPort >> /etc/openvpn/client.ovpn
 echo 'resolv-retry infinite' >> /etc/openvpn/client.ovpn
 echo 'nobind' >> /etc/openvpn/client.ovpn
 echo 'persist-key' >> /etc/openvpn/client.ovpn
@@ -204,8 +206,9 @@ echo '#key client.key' >> /etc/openvpn/client.ovpn
 echo 'key-direction 1' >> /etc/openvpn/client.ovpn
 echo 'auth-nocache' >> /etc/openvpn/client.ovpn
 #making server lic
+#ln -s /usr/share/easy-rsa/openssl-1.0.0.cnf /etc/openvpn/easy-rsa/openssl.cnf
 ln -s /usr/share/easy-rsa/openssl-1.0.0.cnf /usr/share/easy-rsa/openssl.cnf
-perl -p -i -e 's|^(subjectAltName=)|#$1|;' /etc/openvpn/easy-rsa/openssl-1.0.0.cnf #fix Error Loading extension section usr_cert
+perl -p -i -e 's|^(subjectAltName=)|#$1|;' /usr/share/easy-rsa/openssl-1.0.0.cnf #fix Error Loading extension section usr_cert
 cd /usr/share/easy-rsa
 . ./vars
 ./clean-all
@@ -292,24 +295,24 @@ chmod +x /usr/sbin/lmvpns
 ########## FIREWALL SETUP ##################################################
 ############################################################################
 #delete previous iptables
-iptables -D INPUT -i $netCard -p $vpnProto --dport $vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -D INPUT -i $netCard -p $ovpn2kSetup_vpnProto --dport $ovpn2kSetup_vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -D INPUT -i tun+ -j ACCEPT
 iptables -D FORWARD -i tun+ -j ACCEPT
 iptables -D FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -D FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
-if [ $vpsSetup == 1 ]; then
+if [ $ovpn2kSetup_vpsSetup == 1 ]; then
 	iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -j SNAT --to-source $ip
 else
 	iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
 fi
 iptables -D OUTPUT -o tun+ -j ACCEPT
 #add them back
-iptables -A INPUT -i $netCard -p $vpnProto --dport $vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -i $netCard -p $ovpn2kSetup_vpnProto --dport $ovpn2kSetup_vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A INPUT -i tun+ -j ACCEPT
 iptables -A FORWARD -i tun+ -j ACCEPT
 iptables -A FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
-if [ $vpsSetup == 1 ]; then
+if [ $ovpn2kSetup_vpsSetup == 1 ]; then
 	iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j SNAT --to-source $ip
 else
 	iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
@@ -339,5 +342,5 @@ echo -ne "\033[32m         To delete (revoke) a client use \"sudo lmvpnd\".\e[39
 echo -ne "\033[32m         To list clients use \"sudo lmvpnl\".\e[39m\n"
 echo -ne "\033[32m         To restart OpenVPN service use \"sudo lmvpnr\".\e[39m\n"
 echo -ne "\033[32m         To see status use \"sudo lmvpns\".\e[39m\n"
-echo -ne "\e[33m [!] Open port $vpnPort on you router.\e[39m\n"
+echo -ne "\e[33m [!] Open port $ovpn2kSetup_vpnPort on you router.\e[39m\n"
 sleep 2
