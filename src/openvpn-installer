@@ -32,7 +32,7 @@ fi
 ############################################################################
 ovpnSetup_vpnPort='1194' #vpn port to use. default is 1194
 ovpnSetup_vpnProto='tcp' #tcp or udp. udp is faster
-ovpnSetup_vpnDomain='domain.tld' #domain or ip of your openvpn server
+ovpnSetup_vpnDomain='' #leave empty if you do not have a domain
 ovpnSetup_easyRsaBinary='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.7/EasyRSA-3.0.7.tgz'
 
 ############################################################################
@@ -41,7 +41,9 @@ ovpnSetup_easyRsaBinary='https://github.com/OpenVPN/easy-rsa/releases/download/v
 netCard=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
 gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
 lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
-ip=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
+if [[ -z $ovpnSetup_vpnDomain ]]; then
+    ovpnSetup_vpnDomain=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
+fi
 iptables_path=$(command -v iptables)
 
 ############################################################################
@@ -356,9 +358,9 @@ echo -ne "\e[94m [?] Which certificate do you want to revoke? \e[39m\n"
 tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
 until [[ $clientNum -ge 1 && $clientNum -le $clientsTotal ]]; do
     if [[ $clientNum == "1" ]]; then
-        read -rp "Certificate number [1]: " clientNum
+        read -rp " [#] Certificate number to revoke [1]: " clientNum
     else
-        read -rp "Certificate number [1]: " clientNum
+        read -rp " [#] Certificate number to revoke [1-$clientsTotal]: " clientNum
     fi
 done
 certname=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | sed -n "$clientNum"p)
@@ -407,7 +409,7 @@ chmod +x /usr/sbin/lmvpnv
 echo -ne "\033[32m [i] OpenVPN was installed and configured on port $ovpnSetup_vpnPort.\e[39m\n"
 echo -ne "\033[32m         To add a client use \"sudo lmvpna\".\e[39m\n"
 echo -ne "\033[32m         To delete (revoke) a client use \"sudo lmvpnd\".\e[39m\n"
-echo -ne "\033[32m         To list clients use \"sudo lmvpni\".\e[39m\n"
+echo -ne "\033[32m         To list clients use \"sudo lmvpnl\".\e[39m\n"
 echo -ne "\033[32m         To restart OpenVPN service use \"sudo lmvpnr\".\e[39m\n"
 echo -ne "\033[32m         To see status use \"sudo lmvpnv\".\e[39m\n"
 echo -ne "\033[32m         Client certificates are saved at \"/etc/openvpn/client\".\e[39m\n"
