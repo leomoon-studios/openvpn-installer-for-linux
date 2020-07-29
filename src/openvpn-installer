@@ -18,8 +18,9 @@ fi
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### VERSION:
-####### 2.0
+####### 2.01
 ### CHANGELOG:
+####### CLI improvements
 ####### Complete rewrite
 ### USAGE:
 ####### Change the variables below (VARIABLES TO CHANGE)
@@ -66,11 +67,11 @@ if [[ -e /etc/debian_version ]]; then
     if [[ $ID == "debian" || $ID == "raspbian" ]]; then
         if [[ $VERSION_ID -lt 9 ]]; then
             echo -ne "\e[33m [!] Debian $VERSION_ID in not supported.\e[39m\n"
-            echo -ne "\e[94m [?] Do you want to continue at your own risk? \e[39m"
-            until [[ $risk =~ (y|n) ]]; do
-                read risk
+            QUESTION="\e[94m [?] Do you want to continue at your own risk? \e[39m"
+            until [[ $CONTINUE =~ (y|n) ]]; do
+                read -rp "$(echo -e $QUESTION)" -e CONTINUE
             done
-            if [[ $risk == "n" ]]; then
+            if [[ $CONTINUE == "n" ]]; then
                 exit 1
             fi
         fi
@@ -79,11 +80,11 @@ if [[ -e /etc/debian_version ]]; then
         MAJOR_UBUNTU_VERSION=$(echo "$VERSION_ID" | cut -d '.' -f1)
         if [[ $MAJOR_UBUNTU_VERSION -lt 16 ]]; then
             echo -ne "\e[33m [!] Ubuntu $VERSION_ID in not supported.\e[39m\n"
-            echo -ne "\e[94m [?] Do you want to continue at your own risk? \e[39m"
-            until [[ $risk =~ (y|n) ]]; do
-                read risk
+            QUESTION="\e[94m [?] Do you want to continue at your own risk? \e[39m"
+            until [[ $CONTINUE =~ (y|n) ]]; do
+                read -rp "$(echo -e $QUESTION)" -e CONTINUE
             done
-            if [[ $risk == "n" ]]; then
+            if [[ $CONTINUE == "n" ]]; then
                 exit 1
             fi
         fi
@@ -293,7 +294,7 @@ remote-cert-tls server
 auth SHA512
 cipher AES-256-GCM
 ignore-unknown-option block-outside-dns
-block-outside-dns
+setenv opt block-outside-dns #fix win10 dns leak
 auth-nocache
 verb 3" > /etc/openvpn/server/common.ovpn
 #generate lmvpna
@@ -302,9 +303,9 @@ if [ "$EUID" -ne 0 ]; then #checking root
     echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
     exit 1
 fi
-echo -ne "\e[94m [?] What is the client name (no spaces, no special characters)? \e[39m"
+QUESTION="\e[94m [?] What is the client name (no spaces, no special characters)? \e[39m"
 until [[ $client =~ ^[a-zA-Z0-9_]+$ ]]; do
-    read client
+    read -rp "$(echo -e $QUESTION)" -e client
 done
 clientExists=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c -E "/CN=$client\$")
 if [[ $clientExists == "1" ]]; then
@@ -337,7 +338,7 @@ if [ "$EUID" -ne 0 ]; then #checking root
 fi
 clientsTotal=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
 if [[ $clientsTotal == "0" ]]; then
-    echo -ne "\e[33m [!] You have no existing clients.\e[39m\n"
+    echo -ne "\e[33m [!] You have no clients to list.\e[39m\n"
     exit 1
 fi
 echo -ne "\033[32m [i] List of current active certificates: \e[39m\n"
@@ -354,14 +355,16 @@ if [[ $clientsTotal == "0" ]]; then
     echo -ne "\e[33m [!] There are no client certificates to revoke.\e[39m\n"
     exit 1
 fi
-echo -ne "\e[94m [?] Which certificate do you want to revoke? \e[39m\n"
+if [[ $clientsTotal == "1" ]]; then
+    helpText="1"
+else
+    helpText="1-$clientsTotal"
+fi
+echo -ne "\033[32m [i] List of current active certificates: \e[39m\n"
 tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
+QUESTION="\e[94m [i] Which certificate do you want to revoke [$helpText]? \e[39m"
 until [[ $clientNum -ge 1 && $clientNum -le $clientsTotal ]]; do
-    if [[ $clientNum == "1" ]]; then
-        read -rp " [#] Certificate number to revoke [1]: " clientNum
-    else
-        read -rp " [#] Certificate number to revoke [1-$clientsTotal]: " clientNum
-    fi
+    read -rp "$(echo -e $QUESTION)" clientNum
 done
 certname=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | sed -n "$clientNum"p)
 cd /etc/openvpn/server/easy-rsa/
