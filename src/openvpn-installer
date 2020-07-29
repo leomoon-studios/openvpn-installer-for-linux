@@ -1,0 +1,413 @@
+#!/bin/bash
+if [ $(id -u) -ne 0 ]; then #checking root
+    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo ./`basename $0`\"\e[39m\n"
+    exit 1
+fi
+
+############################################################################
+########## INFO ############################################################
+############################################################################
+### ABOUT:
+####### This script will setup OpenVPN on the systems listed below:
+#######    Amazon Linux 2 x64
+#######    Arch Linux x64, arm64
+#######
+#######    CentOSCentOS 7 x86, x64, armf, arm64 8 x64, arm64
+#######    Ubuntu 16.04 x86, x64
+#######    Ubuntu >= 18.04 x86, x64, armf, arm64
+### AUTOHR:
+####### Amin Babaeipanah
+### VERSION:
+####### 2.0
+### CHANGELOG:
+####### Complete rewrite
+### USAGE:
+####### Change the variables below (VARIABLES TO CHANGE)
+####### Run "chmod +x scriptName" to make it executable
+####### Run it using "sudo ./scriptName"
+####### Follow on-screen instructions
+
+############################################################################
+########## VARIABLES TO CHANGE #############################################
+############################################################################
+ovpnSetup_vpnPort='1194' #vpn port to use. default is 1194
+ovpnSetup_vpnProto='tcp' #tcp or udp. udp is faster
+ovpnSetup_vpnDomain='domain.tld' #domain or ip of your openvpn server
+ovpnSetup_easyRsaBinary='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.7/EasyRSA-3.0.7.tgz'
+
+############################################################################
+########## INTERNAL VARIABLES - DO NOT TOUCH ###############################
+############################################################################
+netCard=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
+lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
+ip=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
+iptables_path=$(command -v iptables)
+
+############################################################################
+########## INITIAL CHECK ###################################################
+############################################################################
+#check if tun is available
+if [ ! -e /dev/net/tun ]; then
+    echo -ne "\e[33m [!] TUN is not available. Please enable TUN and run this script again.\e[39m\n"
+    exit 1
+fi
+#detect nic
+if [[ -z $netCard ]]; then
+    echo -ne "\e[33m [!] Failed to detect public interface. Please make sure this server is connected to the internet."
+    exit 1
+fi
+#detect os
+if [[ -e /etc/debian_version ]]; then
+    OS="debian"
+    source /etc/os-release
+    if [[ $ID == "debian" || $ID == "raspbian" ]]; then
+        if [[ $VERSION_ID -lt 9 ]]; then
+            echo -ne "\e[33m [!] Debian $VERSION_ID in not supported.\e[39m\n"
+            echo -ne "\e[94m [?] Do you want to continue at your own risk? \e[39m"
+            until [[ $risk =~ (y|n) ]]; do
+                read risk
+            done
+            if [[ $risk == "n" ]]; then
+                exit 1
+            fi
+        fi
+    elif [[ $ID == "ubuntu" ]]; then
+        OS="ubuntu"
+        MAJOR_UBUNTU_VERSION=$(echo "$VERSION_ID" | cut -d '.' -f1)
+        if [[ $MAJOR_UBUNTU_VERSION -lt 16 ]]; then
+            echo -ne "\e[33m [!] Ubuntu $VERSION_ID in not supported.\e[39m\n"
+            echo -ne "\e[94m [?] Do you want to continue at your own risk? \e[39m"
+            until [[ $risk =~ (y|n) ]]; do
+                read risk
+            done
+            if [[ $risk == "n" ]]; then
+                exit 1
+            fi
+        fi
+    fi
+elif [[ -e /etc/system-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    if [[ $ID == "fedora" ]]; then
+        OS="fedora"
+    fi
+    if [[ $ID == "centos" ]]; then
+        OS="centos"
+        if [[ ! $VERSION_ID =~ (7|8) ]]; then
+            echo -ne "\e[33m [!] CentOS $VERSION_ID in not supported.\e[39m\n"
+            echo -ne "\e[33m [!] This script only supports CentOS 7 and CentOS 8.\e[39m"
+            exit 1
+        fi
+    fi
+    if [[ $ID == "amzn" ]]; then
+        OS="amzn"
+        if [[ $VERSION_ID != "2" ]]; then
+            echo -ne "\e[33m [!] Amazon Linux $VERSION_ID in not supported.\e[39m\n"
+            echo -ne "\e[33m [!] This script only supports Amazon Linux 2.\e[39m\n"
+            exit 1
+        fi
+    fi
+elif [[ -e /etc/arch-release ]]; then
+    OS=arch
+else
+    echo "Unkown Linux distro. This script only supports Debian, Ubuntu, CentOS, Fedora, Amazon Linux and Arch Linux"
+    exit 1
+fi
+#detect nogroup or nobody
+if grep -qs "^nogroup:" /etc/group; then
+    NOGROUP=nogroup
+else
+    NOGROUP=nobody
+fi
+
+############################################################################
+########## INSTALLING PACKAGES #############################################
+############################################################################
+#install openvpn
+if [[ ! -e /etc/openvpn/server.conf ]]; then
+    if [[ $OS =~ (debian|ubuntu) ]]; then
+        apt-get update
+        apt-get install ca-certificates gnupg -y
+        #ubuntu 16.04 doesn't have openvpn repo
+        if [[ $VERSION_ID == "16.04" ]]; then
+            echo "deb http://build.openvpn.net/debian/openvpn/stable xenial main" >/etc/apt/sources.list.d/openvpn.list
+            wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
+            apt-get update
+        fi
+        apt-get install openvpn iptables openssl wget ca-certificates curl -y
+    elif [[ $OS == 'centos' ]]; then
+        yum install epel-release -y
+        yum install openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*' -y
+    elif [[ $OS == 'amzn' ]]; then
+        amazon-linux-extras install epel -y
+        yum install openvpn iptables openssl wget ca-certificates curl -y
+    elif [[ $OS == 'fedora' ]]; then
+        dnf install openvpn iptables openssl wget ca-certificates curl policycoreutils-python-utils -y
+    elif [[ $OS == 'arch' ]]; then
+        pacman --needed --noconfirm -Syu openvpn iptables openssl wget ca-certificates curl
+    fi
+    #remove the old easy-rsa
+    if [[ -d /etc/openvpn/easy-rsa/ ]]; then
+        rm -rf /etc/openvpn/easy-rsa/
+    fi
+fi
+#if port is custom, change hardcoded port in selinux
+if hash sestatus 2>/dev/null; then
+    if sestatus | grep "Current mode" | grep -qs "enforcing"; then
+        if [[ $ovpnSetup_vpnPort != '1194' ]]; then
+            semanage port -a -t openvpn_port_t -p "$ovpnSetup_vpnProto" "$ovpnSetup_vpnPort"
+        fi
+    fi
+fi
+# if systemd-detect-virt -cq; then
+#     mkdir /etc/systemd/system/openvpn-server@server.service.d/ 2>/dev/null
+#     echo '[Service]' > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
+#     echo 'LimitNPROC=infinity' > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
+# fi
+
+############################################################################
+########## MODIFYING NETWORK ADAPTERS ######################################
+############################################################################
+echo '1' > /proc/sys/net/ipv6/conf/lo/disable_ipv6
+echo '1' > /proc/sys/net/ipv6/conf/all/disable_ipv6
+echo '1' > /proc/sys/net/ipv6/conf/default/disable_ipv6
+echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/20-openvpn.conf
+# echo '1' > /proc/sys/net/ipv4/ip_forward
+# echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/30-openvpn-forward.conf
+# sed -i 's|#net.ipv4.ip_forward=1|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
+sysctl --system
+
+############################################################################
+########## GENERATING FILES ################################################
+############################################################################
+if [ ! -d /etc/openvpn/client ]; then mkdir -p /etc/openvpn/client; fi
+mkdir -p /etc/openvpn/server/easy-rsa/
+{ wget -qO- "$ovpnSetup_easyRsaBinary" 2>/dev/null || curl -sL "$ovpnSetup_easyRsaBinary" ; } | tar xz -C /etc/openvpn/server/easy-rsa/ --strip-components 1
+chown -R root:root /etc/openvpn/server/easy-rsa/
+cd /etc/openvpn/server/easy-rsa/
+# sed -i "0,/^RANDFILE/s//#RANDFILE/" /etc/openvpn/server/easy-rsa/openssl-easyrsa.cnf
+./easyrsa init-pki
+./easyrsa --batch build-ca nopass #generate ca and key
+EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass #generate server cert
+EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl #generate revoke cert
+cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/crl.pem /etc/openvpn/server #copy certs
+chown nobody:$NOGROUP /etc/openvpn/server/crl.pem
+chmod o+x /etc/openvpn/server #needed for openvpn to run start() on CRL file
+openvpn --genkey --secret /etc/openvpn/server/tc.key #generate tls-crypt
+echo '-----BEGIN DH PARAMETERS-----
+MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
++8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a
+87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7
+YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
+7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
+ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
+-----END DH PARAMETERS-----' > /etc/openvpn/server/dh.pem #predefined ffdhe2048 group
+#generate server.conf
+echo "local $lanip
+port $ovpnSetup_vpnPort
+proto $ovpnSetup_vpnProto
+dev tun
+sndbuf 0
+rcvbuf 0
+ca ca.crt
+cert server.crt
+key server.key
+dh dh.pem
+tls-crypt tc.key
+crl-verify crl.pem
+auth SHA512
+cipher AES-256-GCM
+topology subnet
+server 10.8.0.0 255.255.255.0
+push \"redirect-gateway def1 bypass-dhcp\"
+ifconfig-pool-persist ipp.txt
+push \"dhcp-option DNS 8.8.8.8\"
+push \"dhcp-option DNS 8.8.4.4\"
+keepalive 10 120
+user nobody
+group $NOGROUP
+persist-key
+persist-tun
+status openvpn-status.log
+verb 3" > /etc/openvpn/server/server.conf
+#setup service
+echo "[Unit]
+Before=network.target
+[Service]
+Type=oneshot
+ExecStart=$iptables_path -I INPUT -i $netCard -p $ovpnSetup_vpnProto --dport $ovpnSetup_vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
+ExecStart=$iptables_path -I INPUT -i tun+ -j ACCEPT
+ExecStart=$iptables_path -I FORWARD -i tun+ -j ACCEPT
+ExecStart=$iptables_path -I FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStart=$iptables_path -I FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStart=$iptables_path -t nat -A POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
+ExecStart=$iptables_path -I OUTPUT -o tun+ -j ACCEPT
+ExecStop=$iptables_path -D INPUT -i $netCard -p $ovpnSetup_vpnProto --dport $ovpnSetup_vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
+ExecStop=$iptables_path -D INPUT -i tun+ -j ACCEPT
+ExecStop=$iptables_path -D FORWARD -i tun+ -j ACCEPT
+ExecStop=$iptables_path -D FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStop=$iptables_path -D FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStop=$iptables_path -t nat -D POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
+ExecStop=$iptables_path -D OUTPUT -o tun+ -j ACCEPT
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/openvpn-iptables.service
+#enable this service
+systemctl daemon-reload
+systemctl enable openvpn-iptables
+systemctl start openvpn-iptables
+#start openvpn service
+if [[ $OS == 'arch' || $OS == 'fedora' || $OS == 'centos' ]]; then
+    #fix openvz
+    sed -i 's|LimitNPROC|#LimitNPROC|' /usr/lib/systemd/system/openvpn-server@.service
+    #remove hardcoded fedora ciphers
+    if [[ $OS == "fedora" ]]; then
+        sed -i 's|--cipher AES-256-GCM --ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC:AES-128-CBC:BF-CBC||' /usr/lib/systemd/system/openvpn-server@.service
+    fi
+    systemctl daemon-reload
+    systemctl enable openvpn-server@server
+    systemctl restart openvpn-server@server
+elif [[ $OS == "ubuntu" ]] && [[ $VERSION_ID == "16.04" ]]; then
+    systemctl enable openvpn
+    systemctl start openvpn
+else
+    #fix openvz
+    sed -i 's|LimitNPROC|#LimitNPROC|' /lib/systemd/system/openvpn-server@.service
+    systemctl daemon-reload
+    systemctl enable openvpn-server@server
+    systemctl restart openvpn-server@server
+fi
+#generate common.ovpn
+echo "client
+dev tun
+proto $ovpnSetup_vpnProto
+remote $ovpnSetup_vpnDomain $ovpnSetup_vpnPort
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA512
+cipher AES-256-GCM
+ignore-unknown-option block-outside-dns
+block-outside-dns
+auth-nocache
+verb 3" > /etc/openvpn/server/common.ovpn
+#generate lmvpna
+echo '#!/bin/bash
+if [ "$EUID" -ne 0 ]; then #checking root
+    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
+    exit 1
+fi
+echo -ne "\e[94m [?] What is the client name (no spaces, no special characters)? \e[39m"
+until [[ $client =~ ^[a-zA-Z0-9_]+$ ]]; do
+    read client
+done
+clientExists=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c -E "/CN=$client\$")
+if [[ $clientExists == "1" ]]; then
+    echo -ne "\e[33m [!] Client \"$client\" already exists. Please choose another name.\e[39m\n"
+    exit
+else
+    cd /etc/openvpn/server/easy-rsa/
+    EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-client-full $client nopass
+    cat /etc/openvpn/server/common.ovpn > /etc/openvpn/client/$client.ovpn
+    echo "<ca>" >> /etc/openvpn/client/$client.ovpn
+    cat /etc/openvpn/server/easy-rsa/pki/ca.crt >> /etc/openvpn/client/$client.ovpn
+    echo "</ca>" >> /etc/openvpn/client/$client.ovpn
+    echo "<cert>" >> /etc/openvpn/client/$client.ovpn
+    sed -ne "/BEGIN CERTIFICATE/,$ p" /etc/openvpn/server/easy-rsa/pki/issued/$client.crt >> /etc/openvpn/client/$client.ovpn
+    echo "</cert>" >> /etc/openvpn/client/$client.ovpn
+    echo "<key>" >> /etc/openvpn/client/$client.ovpn
+    cat /etc/openvpn/server/easy-rsa/pki/private/$client.key >> /etc/openvpn/client/$client.ovpn
+    echo "</key>" >> /etc/openvpn/client/$client.ovpn
+    echo "<tls-crypt>" >> /etc/openvpn/client/$client.ovpn
+    sed -ne "/BEGIN OpenVPN Static key/,$ p" /etc/openvpn/server/tc.key >> /etc/openvpn/client/$client.ovpn
+    echo "</tls-crypt>" >> /etc/openvpn/client/$client.ovpn
+    echo -ne "\033[32m [i] Your new $client certificate is located at \"/etc/openvpn/client/\".\e[39m\n"
+fi' > /usr/sbin/lmvpna
+chmod +x /usr/sbin/lmvpna
+#generate lmvpnl
+echo '#!/bin/bash
+if [ "$EUID" -ne 0 ]; then #checking root
+    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
+    exit 1
+fi
+clientsTotal=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
+if [[ $clientsTotal == "0" ]]; then
+    echo -ne "\e[33m [!] You have no existing clients.\e[39m\n"
+    exit 1
+fi
+echo -ne "\033[32m [i] List of current active certificates: \e[39m\n"
+tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "' > /usr/sbin/lmvpnl
+chmod +x /usr/sbin/lmvpnl
+#generate lmvpnd
+echo '#!/bin/bash
+if [ "$EUID" -ne 0 ]; then #checking root
+    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
+    exit 1
+fi
+clientsTotal=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
+if [[ $clientsTotal == "0" ]]; then
+    echo -ne "\e[33m [!] There are no client certificates to revoke.\e[39m\n"
+    exit 1
+fi
+echo -ne "\e[94m [?] Which certificate do you want to revoke? \e[39m\n"
+tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
+until [[ $clientNum -ge 1 && $clientNum -le $clientsTotal ]]; do
+    if [[ $clientNum == "1" ]]; then
+        read -rp "Certificate number [1]: " clientNum
+    else
+        read -rp "Certificate number [1]: " clientNum
+    fi
+done
+certname=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | sed -n "$clientNum"p)
+cd /etc/openvpn/server/easy-rsa/
+./easyrsa --batch revoke $certname
+EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl
+rm -f /etc/openvpn/server/crl.pem
+cp pki/crl.pem /etc/openvpn/server/crl.pem
+chmod 644 /etc/openvpn/server/crl.pem
+rm -f "/etc/openvpn/client/$certname.ovpn"
+sed -i "/^$certname,.*/d" /etc/openvpn/server/ipp.txt
+lmvpnr
+echo -ne "\033[32m [i] Certificate revoked successfully.\e[39m\n"' > /usr/sbin/lmvpnd
+chmod +x /usr/sbin/lmvpnd
+#generate lmvpnr
+echo '#!/bin/bash
+if [ "$EUID" -ne 0 ]; then #checking root
+    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
+    exit 1
+fi
+#systemctl restart openvpn-server@server
+service openvpn-iptables stop
+service openvpn-server@server stop
+service openvpn-iptables start
+service openvpn-server@server start
+if [[ ! "$(systemctl is-active openvpn-server@server)" = "active" ]]; then
+    echo -ne "\033[31m [x] OpenVPN is not running.\e[39m\n"
+elif [[ ! "$(systemctl is-active openvpn-iptables)" = "active" ]]; then
+    echo -ne "\033[31m [x] OpenVPN-iptables is not running.\e[39m\n"
+else
+    echo -ne "\033[32m [i] OpenVPN restarted successfully.\e[39m\n"
+fi' > /usr/sbin/lmvpnr
+chmod +x /usr/sbin/lmvpnr
+#generate lmvpnv
+echo '#!/bin/bash
+if [ "$EUID" -ne 0 ]; then #checking root
+    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
+    exit 1
+fi
+journalctl -u openvpn-server@server -f -n 30' > /usr/sbin/lmvpnv
+chmod +x /usr/sbin/lmvpnv
+
+############################################################################
+########## FINISHING #######################################################
+############################################################################
+echo -ne "\033[32m [i] OpenVPN was installed and configured on port $ovpnSetup_vpnPort.\e[39m\n"
+echo -ne "\033[32m         To add a client use \"sudo lmvpna\".\e[39m\n"
+echo -ne "\033[32m         To delete (revoke) a client use \"sudo lmvpnd\".\e[39m\n"
+echo -ne "\033[32m         To list clients use \"sudo lmvpni\".\e[39m\n"
+echo -ne "\033[32m         To restart OpenVPN service use \"sudo lmvpnr\".\e[39m\n"
+echo -ne "\033[32m         To see status use \"sudo lmvpnv\".\e[39m\n"
+echo -ne "\033[32m         Client certificates are saved at \"/etc/openvpn/client\".\e[39m\n"
