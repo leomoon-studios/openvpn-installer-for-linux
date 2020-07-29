@@ -44,11 +44,6 @@ if [ ! -e /dev/net/tun ]; then
     echo -ne "\e[33m [!] TUN is not available. Please enable TUN and run this script again.\e[39m\n"
     exit 1
 fi
-#detect nic
-if [[ -z $netCard ]]; then
-    echo -ne "\e[33m [!] Failed to detect public interface. Please make sure this server is connected to the internet."
-    exit 1
-fi
 #detect os
 if [[ -e /etc/debian_version ]]; then
     OS="debian"
@@ -168,7 +163,11 @@ if [[ -z $ovpnSetup_vpnDomain ]]; then
     ovpnSetup_vpnDomain=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
 fi
 iptables_path=$(command -v iptables)
-
+#detect nic
+if [[ -z $netCard ]]; then
+    echo -ne "\e[33m [!] Failed to detect public interface. Please make sure this server is connected to the internet.\e[39m\n"
+    exit 1
+fi
 ############################################################################
 ########## MODIFYING NETWORK ADAPTERS ######################################
 ############################################################################
