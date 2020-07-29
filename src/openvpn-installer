@@ -37,17 +37,6 @@ ovpnSetup_vpnDomain='' #leave empty if you do not have a domain
 ovpnSetup_easyRsaBinary='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.7/EasyRSA-3.0.7.tgz'
 
 ############################################################################
-########## INTERNAL VARIABLES - DO NOT TOUCH ###############################
-############################################################################
-netCard=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
-gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
-lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
-if [[ -z $ovpnSetup_vpnDomain ]]; then
-    ovpnSetup_vpnDomain=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
-fi
-iptables_path=$(command -v iptables)
-
-############################################################################
 ########## INITIAL CHECK ###################################################
 ############################################################################
 #check if tun is available
@@ -131,24 +120,24 @@ fi
 if [[ ! -e /etc/openvpn/server.conf ]]; then
     if [[ $OS =~ (debian|ubuntu) ]]; then
         apt-get update
-        apt-get install ca-certificates gnupg -y
+        apt-get install gnupg wget net-tools -y
         #ubuntu 16.04 doesn't have openvpn repo
         if [[ $VERSION_ID == "16.04" ]]; then
             echo "deb http://build.openvpn.net/debian/openvpn/stable xenial main" >/etc/apt/sources.list.d/openvpn.list
             wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
             apt-get update
         fi
-        apt-get install openvpn iptables openssl wget ca-certificates curl -y
+        apt-get install openvpn iptables openssl ca-certificates curl net-tools -y
     elif [[ $OS == 'centos' ]]; then
         yum install epel-release -y
-        yum install openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*' -y
+        yum install openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*' net-tools -y
     elif [[ $OS == 'amzn' ]]; then
         amazon-linux-extras install epel -y
-        yum install openvpn iptables openssl wget ca-certificates curl -y
+        yum install openvpn iptables openssl wget ca-certificates curl net-tools -y
     elif [[ $OS == 'fedora' ]]; then
-        dnf install openvpn iptables openssl wget ca-certificates curl policycoreutils-python-utils -y
+        dnf install openvpn iptables openssl wget ca-certificates curl policycoreutils-python-utils net-tools -y
     elif [[ $OS == 'arch' ]]; then
-        pacman --needed --noconfirm -Syu openvpn iptables openssl wget ca-certificates curl
+        pacman --needed --noconfirm -Syu openvpn iptables openssl wget ca-certificates curl net-tools
     fi
     #remove the old easy-rsa
     if [[ -d /etc/openvpn/easy-rsa/ ]]; then
@@ -168,6 +157,17 @@ fi
 #     echo '[Service]' > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
 #     echo 'LimitNPROC=infinity' > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
 # fi
+
+############################################################################
+########## INTERNAL VARIABLES - DO NOT TOUCH ###############################
+############################################################################
+netCard=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
+lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
+if [[ -z $ovpnSetup_vpnDomain ]]; then
+    ovpnSetup_vpnDomain=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
+fi
+iptables_path=$(command -v iptables)
 
 ############################################################################
 ########## MODIFYING NETWORK ADAPTERS ######################################
