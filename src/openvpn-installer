@@ -1,417 +1,1019 @@
 #!/bin/bash
-if [ $(id -u) -ne 0 ]; then #checking root
-    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo ./`basename $0`\"\e[39m\n"
-    exit 1
-fi
 
 ############################################################################
 ########## INFO ############################################################
 ############################################################################
 ### ABOUT:
-####### This script will setup OpenVPN on the systems listed below:
+####### This script will setup a secure OpenVPN server on systems below:
 #######    Amazon Linux 2 x64
 #######    Arch Linux x64, arm64
-#######    CentOSCentOS 7 x86, x64, armf, arm64 8 x64, arm64
+#######    CentOS 7 x86, x64, armf, arm64
 #######    CentOS 8 x64, arm64
-#######    Ubuntu 16.04 x86, x64
 #######    Ubuntu >= 18.04 x86, x64, armf, arm64
 ### AUTOHR:
 ####### Amin Babaeipanah
-### VERSION:
-####### 2.01
-### CHANGELOG:
-####### CLI improvements
-####### Complete rewrite
 ### USAGE:
-####### Change the variables below (VARIABLES TO CHANGE)
-####### Run "chmod +x scriptName" to make it executable
 ####### Run it using "sudo ./scriptName"
 ####### Follow on-screen instructions
 
 ############################################################################
-########## VARIABLES TO CHANGE #############################################
+########## INTERNAL VARIABLES ##############################################
 ############################################################################
-ovpnSetup_vpnPort='1194' #vpn port to use. default is 1194
-ovpnSetup_vpnProto='tcp' #tcp or udp. udp is faster
-ovpnSetup_vpnDomain='' #leave empty if you do not have a domain
-ovpnSetup_easyRsaBinary='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.7/EasyRSA-3.0.7.tgz'
+VER="3.01"
+LINK="https://lms.to/lmovpn"
+CLRX=$(echo -e "\e[39m ") #color reset
+CLRE=$(echo -e "\e[31m") #color light red
+CLRS=$(echo -e "\e[32m") #color light green
+CLRC=$(echo -e "\e[33m") #color light yellow
+CLRQ=$(echo -e "\e[34m") #color light blue
+CLRI=$(echo -e "\e[36m") #color cyan
+SYME=$(echo -e "[x]")
+SYMS=$(echo -e "[\xE2\x9C\x93]")
+SYMC=$(echo -e "[!]")
+SYMQ=$(echo -e "[?]")
+SYMI=$(echo -e "[i]")
+NETCARD=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+GATEWAY=$(ip -4 route ls | awk '/default/ { print $3 }')
+LANIP=$(ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}')
+WELCOMEMSG="$CLRI
+ ####################################################################
+ ######################## OpenVPN Installer #########################
+ ######################## for Linux v$VER ###########################
+ ####################################################################
+ This script will setup a secure OpenVPN server.
 
+ Latest version available at:
+      $LINK
+$CLRX"
+SILENTMSG="$CLRI $SYMI Running in SILENT mode...$CLRX"
 ############################################################################
-########## INITIAL CHECK ###################################################
+########## FUNCTIONS #######################################################
 ############################################################################
-#check if tun is available
-if [ ! -e /dev/net/tun ]; then
-    echo -ne "\e[33m [!] TUN is not available. Please enable TUN and run this script again.\e[39m\n"
-    exit 1
-fi
-#detect os
-if [[ -e /etc/debian_version ]]; then
-    OS="debian"
-    source /etc/os-release
-    if [[ $ID == "debian" || $ID == "raspbian" ]]; then
-        if [[ $VERSION_ID -lt 9 ]]; then
-            echo -ne "\e[33m [!] Debian $VERSION_ID in not supported.\e[39m\n"
-            QUESTION="\e[94m [?] Do you want to continue at your own risk? \e[39m"
-            until [[ $CONTINUE =~ (y|n) ]]; do
-                read -rp "$(echo -e $QUESTION)" -e CONTINUE
-            done
-            if [[ $CONTINUE == "n" ]]; then
+function init() {
+    #check root
+    if [ "$EUID" -ne 0 ]; then #checking root
+        echo "$CLRE $SYME Please run this script as root.$CLRX"
+        exit 1
+    fi
+    #check if tun is available
+    if [ ! -e /dev/net/tun ]; then
+        echo "$CLRE $SYME TUN is not available. Please enable TUN and run this script again.$CLRX"
+        exit 1
+    fi
+    #check netcard
+    if [[ -z $NETCARD ]]; then
+        echo "$CLRE $SYME Failed to detect the public interface. Please make sure you have an active internet connection.$CLRX"
+    fi
+    #detect nogroup or nobody
+    if grep -qs "^nogroup:" /etc/group; then
+        NOGROUP=nogroup
+    else
+        NOGROUP=nobody
+    fi
+}
+
+function osCheck() {
+    if [[ -e /etc/debian_version ]]; then #debian, rasbian, ubuntu
+        OS="debian"
+        source /etc/os-release
+        if [[ $ID == "debian" || $ID == "raspbian" ]]; then
+            if [[ $VERSION_ID -lt 9 ]]; then
+                echo "$CLRC $SYMC Debian $VERSION_ID in not supported.$CLRX"
+                until [[ $CONTINUE =~ (y|n) ]]; do
+                    read -rp "$CLRQ $SYMQ Do you want to continue at your own risk?$CLRX" -e CONTINUE
+                done
+                if [[ $CONTINUE == "n" ]]; then
+                    exit 1
+                fi
+            fi
+        elif [[ $ID == "ubuntu" ]]; then
+            OS="ubuntu"
+            MAJOR_UBUNTU_VERSION=$(echo "$VERSION_ID" | cut -d '.' -f1)
+            if [[ $MAJOR_UBUNTU_VERSION -lt 18 ]]; then
+                echo "$CLRC $SYMC Ubuntu $VERSION_ID in not supported.$CLRX"
+                until [[ $CONTINUE =~ (y|n) ]]; do
+                    read -rp "$CLRQ $SYMQ Do you want to continue at your own risk?$CLRX" -e CONTINUE
+                done
+                if [[ $CONTINUE == "n" ]]; then
+                    exit 1
+                fi
+            fi
+        fi
+    elif [[ -e /etc/system-release ]]; then #amzn, centos, fedora
+        source /etc/os-release
+        if [[ $ID == "fedora" ]]; then
+            OS="fedora"
+        fi
+        if [[ $ID == "centos" ]]; then
+            OS="centos"
+            if [[ ! $VERSION_ID =~ (7|8) ]]; then
+                echo "$CLRE $SYME CentOS $VERSION_ID in not supported.$CLRX"
+                echo "$CLRE     This script only supports CentOS 7 and CentOS 8.$CLRX"
                 exit 1
             fi
         fi
-    elif [[ $ID == "ubuntu" ]]; then
-        OS="ubuntu"
-        MAJOR_UBUNTU_VERSION=$(echo "$VERSION_ID" | cut -d '.' -f1)
-        if [[ $MAJOR_UBUNTU_VERSION -lt 16 ]]; then
-            echo -ne "\e[33m [!] Ubuntu $VERSION_ID in not supported.\e[39m\n"
-            QUESTION="\e[94m [?] Do you want to continue at your own risk? \e[39m"
-            until [[ $CONTINUE =~ (y|n) ]]; do
-                read -rp "$(echo -e $QUESTION)" -e CONTINUE
-            done
-            if [[ $CONTINUE == "n" ]]; then
+        if [[ $ID == "amzn" ]]; then
+            OS="amzn"
+            if [[ $VERSION_ID != "2" ]]; then
+                echo "$CLRE $SYME Amazon Linux $VERSION_ID in not supported.$CLRX"
+                echo "$CLRE     This script only supports Amazon Linux 2.$CLRX"
                 exit 1
             fi
         fi
+    elif [[ -e /etc/arch-release ]]; then #archlinux
+        OS="arch"
+    else
+        echo "$CLRE $SYME Unkown Linux distro. This script only supports Debian 9+, Ubuntu 16.04+, CentOS 7-8, Fedora, Amazon Linux 2 and Arch Linux.$CLRX"
+        exit 1
     fi
-elif [[ -e /etc/system-release ]]; then
-    # shellcheck disable=SC1091
-    source /etc/os-release
-    if [[ $ID == "fedora" ]]; then
-        OS="fedora"
-    fi
-    if [[ $ID == "centos" ]]; then
-        OS="centos"
-        if [[ ! $VERSION_ID =~ (7|8) ]]; then
-            echo -ne "\e[33m [!] CentOS $VERSION_ID in not supported.\e[39m\n"
-            echo -ne "\e[33m [!] This script only supports CentOS 7 and CentOS 8.\e[39m"
-            exit 1
-        fi
-    fi
-    if [[ $ID == "amzn" ]]; then
-        OS="amzn"
-        if [[ $VERSION_ID != "2" ]]; then
-            echo -ne "\e[33m [!] Amazon Linux $VERSION_ID in not supported.\e[39m\n"
-            echo -ne "\e[33m [!] This script only supports Amazon Linux 2.\e[39m\n"
-            exit 1
-        fi
-    fi
-elif [[ -e /etc/arch-release ]]; then
-    OS=arch
-else
-    echo "Unkown Linux distro. This script only supports Debian, Ubuntu, CentOS, Fedora, Amazon Linux and Arch Linux"
-    exit 1
-fi
-#detect nogroup or nobody
-if grep -qs "^nogroup:" /etc/group; then
-    NOGROUP=nogroup
-else
-    NOGROUP=nobody
-fi
+}
 
-############################################################################
-########## INSTALLING PACKAGES #############################################
-############################################################################
-#install openvpn
-if [[ ! -e /etc/openvpn/server.conf ]]; then
-    if [[ $OS =~ (debian|ubuntu) ]]; then
-        apt-get update
-        apt-get install gnupg wget net-tools -y
-        #ubuntu 16.04 doesn't have openvpn repo
-        if [[ $VERSION_ID == "16.04" ]]; then
-            echo "deb http://build.openvpn.net/debian/openvpn/stable xenial main" >/etc/apt/sources.list.d/openvpn.list
-            wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
+function installMenu() {
+    echo "$WELCOMEMSG"
+    #if silent, show the flags
+    if [[ $SILENT == "y" ]]; then echo "$SILENTMSG"; fi
+    #define port
+    until [[ $PORT =~ ^[0-9]+$ ]] && [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ]; do
+        read -rp "$CLRQ $SYMQ What port do you want OpenVPN to use (default is 1194)? [1-65535]:$CLRX" -e -i 1194 PORT
+        echo ""
+    done
+    #define protocol
+    until [[ $PROTOCOL =~ ^(tcp|TCP|udp|UDP)$ ]]; do
+        read -rp "$CLRQ $SYMQ What protocol OpenVPN should use (default is UDP)? [TCP/UDP]:$CLRX" -e -i UDP PROTOCOL
+        echo ""
+    done
+    PROTOCOL=${PROTOCOL,,}
+    #define dns
+    until [[ $DNS_TYPE =~ ^[0-9]+$ ]] && [ "$DNS_TYPE" -ge 1 ] && [ "$DNS_TYPE" -le 11 ]; do
+        echo "$CLRI $SYMI DNS resolver:"
+        echo "       1- Google (global)"
+        echo "       2- Cloudflare (global)"
+        echo "       3- AdGuard DNS (global)"
+        echo "       4- OpenDNS (global)"
+        echo "       5- Quad9 (global)"
+        echo "       6- Quad9 uncensored (global)"
+        echo "       7- NextDNS (global)"
+        echo "       8- FDN (France)"
+        echo "       9- DNS.WATCH (Germany)"
+        echo "      10- Yandex Basic (Russia)"
+        echo "      11- Current system resolvers in /etc/resolv.conf$CLRX"
+        read -rp "$CLRQ $SYMQ Which DNS resolver you want to use? [1-11]:$CLRX" -e -i 1 DNS_TYPE
+        echo ""
+    done
+    #define compression
+    until [[ $COMPRESSION =~ (y|n) ]]; do
+        read -rp "$CLRQ $SYMQ Do you want to enable compression (not recommended)? [y/n]:$CLRX" -e -i n COMPRESSION
+        echo ""
+    done
+    if [[ $COMPRESSION == "y" ]]; then
+        until [[ $COMPRESSION_TYPE =~ ^[1-3]$ ]]; do
+            echo "$CLRI $SYMI Compression type:"
+            echo "      1- LZ4-v2"
+            echo "      2- LZ4"
+            echo "      3- LZO$CLRX"
+            read -rp "$CLRQ $SYMQ Which compression algorithm you want to use? [1-3]:$CLRX" -e -i 1 COMPRESSION_TYPE
+            echo ""
+        done
+        case $COMPRESSION_TYPE in
+        1)
+            COMPRESSION_ALGO="lz4-v2"
+            ;;
+        2)
+            COMPRESSION_ALGO="lz4"
+            ;;
+        3)
+            COMPRESSION_ALGO="lzo"
+            ;;
+        esac
+    fi
+    #data cipher
+    until [[ $DATACIPHER_TYPE =~ ^[1-6]$ ]]; do
+        echo "$CLRI $SYMI Cipher for data channel:"
+        echo "      1- AES-256-GCM (recommended)"
+        echo "      2- AES-192-GCM"
+        echo "      3- AES-128-GCM"
+        echo "      4- AES-256-CBC"
+        echo "      5- AES-192-CBC"
+        echo "      6- AES-128-CBC$CLRX"
+        read -rp "$CLRQ $SYMQ Which cipher you want to use for data channel? [1-6]:$CLRX" -e -i 1 DATACIPHER_TYPE
+        echo ""
+    done
+    case $DATACIPHER_TYPE in
+    1)
+        DATA_CIPHER="AES-256-GCM"
+        ;;
+    2)
+        DATA_CIPHER="AES-192-GCM"
+        ;;
+    3)
+        DATA_CIPHER="AES-128-GCM"
+        ;;
+    4)
+        DATA_CIPHER="AES-256-CBC"
+        ;;
+    5)
+        DATA_CIPHER="AES-192-CBC"
+        ;;
+    6)
+        DATA_CIPHER="AES-128-CBC"
+        ;;
+    esac
+    #curve or key size based on cert type
+    until [[ $CERT_TYPE =~ ^[1-2]$ ]]; do
+        echo "$CLRI $SYMI Certificate type:"
+        echo "      1- ECDSA (recommended)"
+        echo "      2- RSA$CLRX"
+        read -rp "$CLRQ $SYMQ Which certificate you want to use? [1-2]:$CLRX" -e -i 1 CERT_TYPE
+        echo ""
+    done
+    case $CERT_TYPE in
+    1)
+        until [[ $CURVE_TYPE =~ ^[1-3]$ ]]; do
+            echo "$CLRI $SYMI Certificate curve:"
+            echo "      1- prime256v1 (recommended)"
+            echo "      2- secp384r1"
+            echo "      3- secp521r1$CLRX"
+            read -rp "$CLRQ $SYMQ Which curve you want to use for the certificate's key? [1-3]:$CLRX" -e -i 1 CURVE_TYPE
+            echo ""
+        done
+        case $CURVE_TYPE in
+        1)
+            CERT_CURVE="prime256v1"
+            ;;
+        2)
+            CERT_CURVE="secp384r1"
+            ;;
+        3)
+            CERT_CURVE="secp521r1"
+            ;;
+        esac
+        ;;
+    2)
+        until [[ $RSA_TYPE =~ ^[1-3]$ ]]; do
+            echo "$CLRI $SYMI RSA key size:"
+            echo "      1- 2048 bits (recommended)"
+            echo "      2- 3072 bits"
+            echo "      3- 4096 bits$CLRX"
+            read -rp "$CLRQ $SYMQ Which key size you want to use for RSA certificate? [1-3]:$CLRX" -e -i 1 RSA_TYPE
+            echo ""
+        done
+        case $RSA_TYPE in
+        1)
+            RSA_KEY_SIZE="2048"
+            ;;
+        2)
+            RSA_KEY_SIZE="3072"
+            ;;
+        3)
+            RSA_KEY_SIZE="4096"
+            ;;
+        esac
+        ;;
+    esac
+    #control cipher based on cert type
+    case $CERT_TYPE in
+    1)
+        until [[ $CHANNELCIPHER_TYPE =~ ^[1-2]$ ]]; do
+            echo "$CLRI $SYMI Cipher for control channel:"
+            echo "      1- ECDHE-ECDSA-AES-128-GCM-SHA256 (recommended)"
+            echo "      2- ECDHE-ECDSA-AES-256-GCM-SHA384$CLRX"
+            read -rp "$CLRQ $SYMQ Which cipher you want to use for control channel? [1-2]:$CLRX" -e -i 1 CHANNELCIPHER_TYPE
+            echo ""
+        done
+        case $CHANNELCIPHER_TYPE in
+        1)
+            CONTROL_CIPHER="TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256"
+            ;;
+        2)
+            CONTROL_CIPHER="TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384"
+            ;;
+        esac
+        ;;
+    2)
+        until [[ $CHANNELCIPHER_TYPE =~ ^[1-2]$ ]]; do
+            echo "$CLRI $SYMI Cipher for control channel:"
+            echo "      1- ECDHE-RSA-AES-128-GCM-SHA256 (recommended)"
+            echo "      2- ECDHE-RSA-AES-256-GCM-SHA384$CLRX"
+            read -rp "$CLRQ $SYMQ Which cipher you want to use for control channel? [1-2]:$CLRX" -e -i 1 CHANNELCIPHER_TYPE
+            echo ""
+        done
+        case $CHANNELCIPHER_TYPE in
+        1)
+            CONTROL_CIPHER="TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256"
+            ;;
+        2)
+            CONTROL_CIPHER="TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384"
+            ;;
+        esac
+        ;;
+    esac
+    #dh type
+    until [[ $DH_TYPE =~ [1-2] ]]; do
+        echo "$CLRI $SYMI Diffie-Hellman key type:"
+        echo "      1- ECDH (recommended)"
+        echo "      2- DH$CLRX"
+        read -rp "$CLRQ $SYMQ What kind of Diffie-Hellman key you want to use? [1-2]:$CLRX" -e -i 1 DH_TYPE
+        echo ""
+    done
+    case $DH_TYPE in
+    1)
+        while [[ $DHCURVE_TYPE != "1" && $DHCURVE_TYPE != "2" && $DHCURVE_TYPE != "3" ]]; do
+            echo "$CLRI $SYMI ECDH curve type:"
+            echo "      1- prime256v1 (recommended)"
+            echo "      2- secp384r1"
+            echo "      3- secp521r1$CLRX"
+            read -rp "$CLRQ $SYMQ Which curve type you want to use for the ECDH key? [1-3]:$CLRX" -e -i 1 DHCURVE_TYPE
+            echo ""
+        done
+        case $DHCURVE_TYPE in
+        1)
+            DH_CURVE="prime256v1"
+            ;;
+        2)
+            DH_CURVE="secp384r1"
+            ;;
+        3)
+            DH_CURVE="secp521r1"
+            ;;
+        esac
+        ;;
+    2)
+        until [[ $DHSIZE_TYPE =~ ^[1-3]$ ]]; do
+            echo "$CLRI $SYMI DH key size:"
+            echo "      1- 2048 bits (recommended)"
+            echo "      2- 3072 bits"
+            echo "      3- 4096 bits$CLRX"
+            read -rp "$CLRQ $SYMQ What size of Diffie-Hellman key you want to use? [1-3]:$CLRX" -e -i 1 DHSIZE_TYPE
+            echo ""
+        done
+        case $DHSIZE_TYPE in
+        1)
+            DH_SIZE="2048"
+            ;;
+        2)
+            DH_SIZE="3072"
+            ;;
+        3)
+            DH_SIZE="4096"
+            ;;
+        esac
+        ;;
+    esac
+    until [[ $HMAC_TYPE =~ ^[1-3]$ ]]; do
+        echo "$CLRI $SYMI Digest algorithm:"
+        echo "      1- SHA-256 (recommended)"
+        echo "      2- SHA-384"
+        echo "      3- SHA-512$CLRX"
+        read -rp "$CLRQ $SYMQ Which digest algorithm you want to use for HMAC? [1-3]:$CLRX" -e -i 1 HMAC_TYPE
+        echo ""
+    done
+    case $HMAC_TYPE in
+    1)
+        HMAC="SHA256"
+        ;;
+    2)
+        HMAC="SHA384"
+        ;;
+    3)
+        HMAC="SHA512"
+        ;;
+    esac
+    until [[ $TLS_TYPE =~ [1-2] ]]; do
+        echo "$CLRI $SYMI Control channel security mechanism:"
+        echo "      1- tls-crypt (recommended)"
+        echo "      2- tls-auth$CLRX"
+        read -rp "$CLRQ $SYMQ Which control channel security mechanism you want to use? [1-2]:$CLRX" -e -i 1 TLS_TYPE
+        echo ""
+    done
+    #domain
+    until [[ $DOMAIN_Q =~ (y|n) ]]; do
+        read -rp "$CLRQ $SYMQ Do you have a domain configured on this server? [y/n]:$CLRX" -e -i n DOMAIN_Q
+        echo ""
+    done
+    if [[ $DOMAIN_Q == "y" ]]; then
+        read -rp "$CLRQ $SYMQ What is the fully qualified domain name (example: mydomain.com)?:$CLRX" DOMAIN
+        echo ""
+    fi
+    if [[ ! -z "$DOMAIN" ]]; then
+        WANIP=$DOMAIN
+    else
+        WANIP=$(curl -s "https://icanhazip.com")
+    fi
+    echo "$CLRI $SYMI These are the options you chose:"
+    echo "      Port: $PORT"
+    echo "      Protocol: $PROTOCOL"
+    case $DNS_TYPE in
+    1)
+        echo "      DNS Resolver: Google (global)"
+        ;;
+    2)
+        echo "      DNS Resolver: Cloudflare (global)"
+        ;;
+    3)
+        echo "      DNS Resolver: AdGuard DNS (global)"
+        ;;
+    4)
+        echo "      DNS Resolver: OpenDNS (global)"
+        ;;
+    5)
+        echo "      DNS Resolver: Quad9 (global)"
+        ;;
+    6)
+        echo "      DNS Resolver: Quad9 uncensored (global)"
+        ;;
+    7)
+        echo "      DNS Resolver: NextDNS (global)"
+        ;;
+    8)
+        echo "      DNS Resolver: FDN (France)"
+        ;;
+    9)
+        echo "      DNS Resolver: DNS.WATCH (Germany)"
+        ;;
+    10)
+        echo "      DNS Resolver: Yandex Basic (Russia)"
+        ;;
+    11)
+        echo "      DNS Resolver: Current system resolvers"
+        ;;
+    esac
+    if [[ ! -z "$COMPRESSION_ALGO" ]]; then
+        echo "      Compression Algo: $COMPRESSION_ALGO"
+    else
+        echo "      Compression Algo: none"
+    fi
+    echo "      Data Cipher: $DATA_CIPHER"
+    if [[ $CERT_TYPE == 1 ]]; then
+        echo "      Cert Curve: $CERT_CURVE"
+    else
+        echo "      RSA Key Size: $RSA_KEY_SIZE"
+    fi
+    echo "      Channel Cipher: $CONTROL_CIPHER"
+    if [[ $DH_TYPE == 1 ]]; then
+        echo "      DH Type: ECDH"
+        echo "      DH Curve: $DH_CURVE"
+    else
+        echo "      DH Type: DH"
+        echo "      DH Size: $DH_SIZE"
+    fi
+    echo "      HMAC Type: $HMAC"
+    if [[ $TLS_TYPE == 1 ]]; then
+        echo "      TLS Type: tls-crypt"
+    else
+        echo "      TLS Type: tls-auth"
+    fi
+    echo "      DOMAIN/IP: $WANIP"
+    echo "$CLRX"
+    until [[ $FINALIZE =~ (y|n) ]]; do
+        read -rp "$CLRQ $SYMQ Do you want to continue? [y/n]:$CLRX" -e -i n FINALIZE
+    done
+    if [[ $FINALIZE == "n" ]]; then
+        exit 1
+    fi
+}
+
+function installOvpn() {
+    if [[ $SILENT == "y" ]]; then
+        PORT=${PORT:-1194}
+        PROTOCOL=${PROTOCOL:-udp}
+        DNS_TYPE=${DNS_TYPE:-1}
+        COMPRESSION=${COMPRESSION:-n}
+        COMPRESSION_TYPE=${COMPRESSION_TYPE:-1}
+        DATACIPHER_TYPE=${CIPHER_TYPE:-1}
+        CERT_TYPE=${CERT_TYPE:-1}
+        CURVE_TYPE=${CURVE_TYPE:-1}
+        RSA_TYPE=${RSA_TYPE:-1}
+        CHANNELCIPHER_TYPE=${CHANNELCIPHER_TYPE:-1}
+        DH_TYPE=${DH_TYPE:-1}
+        DHCURVE_TYPE=${DHCURVE_TYPE:-1}
+        DHSIZE_TYPE=${DHSIZE_TYPE:-1}
+        HMAC_TYPE=${HMAC_TYPE:-1}
+        TLS_TYPE=${TLS_TYPE:-1}
+        DOMAIN_Q=${DOMAIN_Q:-n}
+        CONTINUE=${CONTINUE:-y}
+        FINALIZE=${FINALIZE:-y}
+    fi
+    #run installMenu to get values
+    installMenu
+    #get wan ip
+    if [[ ! -z $DOMAIN ]]; then
+        WANIP=$DOMAIN
+    else
+        WANIP=$(curl -s "https://icanhazip.com")
+    fi
+    #enable routing
+    echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/20-openvpn.conf
+    sysctl --system
+    #only install openvpn, if it's not installed
+    if [[ ! -e /etc/openvpn/server/server.conf ]]; then
+        if [[ $OS =~ (debian|ubuntu) ]]; then
             apt-get update
+            apt-get -y install ca-certificates gnupg
+            apt-get install -y openvpn iptables openssl wget ca-certificates curl
+        elif [[ $OS == 'centos' ]]; then
+            yum install -y epel-release
+            yum install -y openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*'
+        elif [[ $OS == 'amzn' ]]; then
+            amazon-linux-extras install -y epel
+            yum install -y openvpn iptables openssl wget ca-certificates curl
+        elif [[ $OS == 'fedora' ]]; then
+            dnf install -y openvpn iptables openssl wget ca-certificates curl policycoreutils-python-utils
+        elif [[ $OS == 'arch' ]]; then
+            pacman --needed --noconfirm -Syu openvpn iptables openssl wget ca-certificates curl
         fi
-        apt-get install openvpn iptables openssl ca-certificates curl net-tools -y
-    elif [[ $OS == 'centos' ]]; then
-        yum install epel-release -y
-        yum install openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*' net-tools -y
-    elif [[ $OS == 'amzn' ]]; then
-        amazon-linux-extras install epel -y
-        yum install openvpn iptables openssl wget ca-certificates curl net-tools -y
-    elif [[ $OS == 'fedora' ]]; then
-        dnf install openvpn iptables openssl wget ca-certificates curl policycoreutils-python-utils net-tools -y
-    elif [[ $OS == 'arch' ]]; then
-        pacman --needed --noconfirm -Syu openvpn iptables openssl wget ca-certificates curl net-tools
-    fi
-    #remove the old easy-rsa
-    if [[ -d /etc/openvpn/easy-rsa/ ]]; then
-        rm -rf /etc/openvpn/easy-rsa/
-    fi
-fi
-#if port is custom, change hardcoded port in selinux
-if hash sestatus 2>/dev/null; then
-    if sestatus | grep "Current mode" | grep -qs "enforcing"; then
-        if [[ $ovpnSetup_vpnPort != '1194' ]]; then
-            semanage port -a -t openvpn_port_t -p "$ovpnSetup_vpnProto" "$ovpnSetup_vpnPort"
+        #remove old easy-rsa that get installed sometimes
+        if [[ -d /etc/openvpn/easy-rsa/ ]]; then
+            rm -rf /etc/openvpn/easy-rsa/
         fi
     fi
-fi
-# if systemd-detect-virt -cq; then
-#     mkdir /etc/systemd/system/openvpn-server@server.service.d/ 2>/dev/null
-#     echo '[Service]' > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
-#     echo 'LimitNPROC=infinity' > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
-# fi
-
-############################################################################
-########## INTERNAL VARIABLES - DO NOT TOUCH ###############################
-############################################################################
-netCard=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
-gateway=`netstat -rn | grep 0.0.0.0 | awk '{print $2}' | grep -v "0.0.0.0"` #dns server
-lanip=`ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}'`
-if [[ -z $ovpnSetup_vpnDomain ]]; then
-    ovpnSetup_vpnDomain=`wget -O - -q "https://dynamicdns.park-your-domain.com/getip"`
-fi
-iptables_path=$(command -v iptables)
-#detect nic
-if [[ -z $netCard ]]; then
-    echo -ne "\e[33m [!] Failed to detect public interface. Please make sure this server is connected to the internet.\e[39m\n"
-    exit 1
-fi
-############################################################################
-########## MODIFYING NETWORK ADAPTERS ######################################
-############################################################################
-echo '1' > /proc/sys/net/ipv6/conf/lo/disable_ipv6
-echo '1' > /proc/sys/net/ipv6/conf/all/disable_ipv6
-echo '1' > /proc/sys/net/ipv6/conf/default/disable_ipv6
-echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/20-openvpn.conf
-# echo '1' > /proc/sys/net/ipv4/ip_forward
-# echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/30-openvpn-forward.conf
-# sed -i 's|#net.ipv4.ip_forward=1|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
-sysctl --system
-
-############################################################################
-########## GENERATING FILES ################################################
-############################################################################
-if [ ! -d /etc/openvpn/client ]; then mkdir -p /etc/openvpn/client; fi
-mkdir -p /etc/openvpn/server/easy-rsa/
-{ wget -qO- "$ovpnSetup_easyRsaBinary" 2>/dev/null || curl -sL "$ovpnSetup_easyRsaBinary" ; } | tar xz -C /etc/openvpn/server/easy-rsa/ --strip-components 1
-chown -R root:root /etc/openvpn/server/easy-rsa/
-cd /etc/openvpn/server/easy-rsa/
-# sed -i "0,/^RANDFILE/s//#RANDFILE/" /etc/openvpn/server/easy-rsa/openssl-easyrsa.cnf
-./easyrsa init-pki
-./easyrsa --batch build-ca nopass #generate ca and key
-EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass #generate server cert
-EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl #generate revoke cert
-cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/crl.pem /etc/openvpn/server #copy certs
-chown nobody:$NOGROUP /etc/openvpn/server/crl.pem
-chmod o+x /etc/openvpn/server #needed for openvpn to run start() on CRL file
-openvpn --genkey --secret /etc/openvpn/server/tc.key #generate tls-crypt
-echo '-----BEGIN DH PARAMETERS-----
-MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
-+8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a
-87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7
-YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
-7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
-ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
------END DH PARAMETERS-----' > /etc/openvpn/server/dh.pem #predefined ffdhe2048 group
-#generate server.conf
-echo "local $lanip
-port $ovpnSetup_vpnPort
-proto $ovpnSetup_vpnProto
-dev tun
+    #get iptables exec
+    IPTABLESPATH=$(command -v iptables)
+    #install easy-rsa
+    if [[ ! -d /etc/openvpn/server/easy-rsa/ ]]; then
+        EASYRSAVER="3.0.7"
+        #wget https://github.com/OpenVPN/easy-rsa/releases/download/v${EASYRSAVER}/EasyRSA-${EASYRSAVER}.tgz -O ~/easy-rsa.tgz
+        EASYRSALINK="https://github.com/OpenVPN/easy-rsa/releases/download/v${EASYRSAVER}/EasyRSA-${EASYRSAVER}.tgz"
+        mkdir /etc/openvpn/server/easy-rsa
+        { wget -qO- "$EASYRSALINK" 2>/dev/null || curl -sL "$EASYRSALINK" ; } | tar xz -C /etc/openvpn/server/easy-rsa/ --strip-components 1
+    fi
+    if [[ ! -d /etc/openvpn/client ]]; then mkdir -p /etc/openvpn/client; fi
+    cd /etc/openvpn/server/easy-rsa/
+    case $CERT_TYPE in
+    1)
+        echo "set_var EASYRSA_ALGO ec" >vars
+        echo "set_var EASYRSA_CURVE $CERT_CURVE" >>vars
+        ;;
+    2)
+        echo "set_var EASYRSA_KEY_SIZE $RSA_KEY_SIZE" >vars
+        ;;
+    esac
+    #generate random SERVER_CN and SERVER_NAME
+    SERVER_CN="cn_$(head /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1)"
+    echo "$SERVER_CN" > SERVER_CN
+    SERVER_NAME="server_$(head /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1)"
+    echo "$SERVER_NAME" > SERVER_NAME
+    echo "set_var EASYRSA_REQ_CN $SERVER_CN" >>vars
+    ./easyrsa init-pki
+    ./easyrsa --batch build-ca nopass #generate ca and key
+    #generate dh only for none ec
+    if [[ $DH_TYPE == "2" ]]; then
+        openssl dhparam -out dh.pem $DH_SIZE
+    fi
+    ./easyrsa build-server-full "$SERVER_NAME" nopass #generate server cert
+    EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl #generate revoke cert
+    #tls-crypt/tls-auth
+    case $TLS_TYPE in
+    1)
+        openvpn --genkey --secret /etc/openvpn/server/tls-crypt.key
+        ;;
+    2)
+        openvpn --genkey --secret /etc/openvpn/server/tls-auth.key
+        ;;
+    esac
+    #copy all generated certs
+    cp pki/ca.crt pki/private/ca.key "pki/issued/$SERVER_NAME.crt" "pki/private/$SERVER_NAME.key" pki/crl.pem /etc/openvpn/server
+    if [[ $DH_TYPE == "2" ]]; then
+        cp dh.pem /etc/openvpn/server/dh.pem
+    fi
+    chown -R root:root /etc/openvpn/server/easy-rsa/
+    chown nobody:$NOGROUP /etc/openvpn/server/crl.pem
+    chmod o+x /etc/openvpn/server #needed for openvpn to run start() on CRL file
+    echo "port $PORT" > /etc/openvpn/server/server.conf
+    echo "proto $PROTOCOL" >> /etc/openvpn/server/server.conf
+    echo "dev tun
 sndbuf 0
-rcvbuf 0
+rcvbuf 0" >> /etc/openvpn/server/server.conf
+    #dns
+    case $DNS_TYPE in
+    1) #google
+        echo 'push "dhcp-option DNS 8.8.8.8"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 8.8.4.4"' >> /etc/openvpn/server/server.conf
+        ;;
+    2) #cloudflare
+        echo 'push "dhcp-option DNS 1.0.0.1"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 1.1.1.1"' >> /etc/openvpn/server/server.conf
+        ;;
+    3) #adguard dns
+        echo 'push "dhcp-option DNS 176.103.130.130"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 176.103.130.131"' >> /etc/openvpn/server/server.conf
+        ;;
+    4) #opendns
+        echo 'push "dhcp-option DNS 208.67.222.222"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 208.67.220.220"' >> /etc/openvpn/server/server.conf
+        ;;
+    5) #quad9
+        echo 'push "dhcp-option DNS 9.9.9.9"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 149.112.112.112"' >> /etc/openvpn/server/server.conf
+        ;;
+    6) #quad9 uncensored
+        echo 'push "dhcp-option DNS 9.9.9.10"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 149.112.112.10"' >> /etc/openvpn/server/server.conf
+        ;;
+    7) # NextDNS
+        echo 'push "dhcp-option DNS 45.90.28.167"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 45.90.30.167"' >> /etc/openvpn/server/server.conf
+        ;;
+    8) #fdn
+        echo 'push "dhcp-option DNS 80.67.169.40"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 80.67.169.12"' >> /etc/openvpn/server/server.conf
+        ;;
+    9) #dns.watch
+        echo 'push "dhcp-option DNS 84.200.69.80"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 84.200.70.40"' >> /etc/openvpn/server/server.conf
+        ;;
+    10) #yandex basic
+        echo 'push "dhcp-option DNS 77.88.8.8"' >> /etc/openvpn/server/server.conf
+        echo 'push "dhcp-option DNS 77.88.8.1"' >> /etc/openvpn/server/server.conf
+        ;;
+    11) #current system resolve.conf
+        if grep -q "127.0.0.53" "/etc/resolv.conf"; then
+            RESOLVCONF='/run/systemd/resolve/resolv.conf'
+        else
+            RESOLVCONF='/etc/resolv.conf'
+        fi
+        sed -ne 's/^nameserver[[:space:]]\+\([^[:space:]]\+\).*$/\1/p' $RESOLVCONF | while read -r line; do
+            if [[ $line =~ ^[0-9.]*$ ]]; then
+                echo "push \"dhcp-option DNS $line\"" >>/etc/openvpn/server.conf
+            fi
+        done
+        ;;
+    esac
+    echo 'push "redirect-gateway def1 bypass-dhcp"' >> /etc/openvpn/server/server.conf
+    #compression
+    if [[ $COMPRESSION == "y" ]]; then
+        echo "compress $COMPRESSION_ALGO" >> /etc/openvpn/server/server.conf
+    fi
+    #dh
+    if [[ $DH_TYPE == "1" ]]; then
+        echo "dh none" >> /etc/openvpn/server/server.conf
+        echo "ecdh-curve $DH_CURVE" >> /etc/openvpn/server/server.conf
+    elif [[ $DH_TYPE == "2" ]]; then
+        echo "dh dh.pem" >> /etc/openvpn/server/server.conf
+    fi
+    case $TLS_TYPE in
+    1)
+        echo "tls-crypt tls-crypt.key 0" >> /etc/openvpn/server/server.conf
+        ;;
+    2)
+        echo "tls-auth tls-auth.key 0" >> /etc/openvpn/server/server.conf
+        ;;
+    esac
+    echo "crl-verify crl.pem
 ca ca.crt
-cert server.crt
-key server.key
-dh dh.pem
-tls-crypt tc.key
-crl-verify crl.pem
-auth SHA512
-cipher AES-256-GCM
+cert $SERVER_NAME.crt
+key $SERVER_NAME.key
+auth $HMAC
+cipher $DATA_CIPHER
+ncp-ciphers $DATA_CIPHER
+tls-server
+tls-version-min 1.2
+tls-cipher $CONTROL_CIPHER
 topology subnet
 server 10.8.0.0 255.255.255.0
-push \"redirect-gateway def1 bypass-dhcp\"
-ifconfig-pool-persist ipp.txt
-push \"dhcp-option DNS 8.8.8.8\"
-push \"dhcp-option DNS 8.8.4.4\"
 keepalive 10 120
 user nobody
 group $NOGROUP
 persist-key
 persist-tun
-status openvpn-status.log
-verb 3" > /etc/openvpn/server/server.conf
-#setup service
-echo "[Unit]
+ifconfig-pool-persist ipp.txt
+status status.log
+verb 3" >> /etc/openvpn/server/server.conf
+    #if port is custom, change hardcoded port in selinux
+    if hash sestatus 2>/dev/null; then
+        if sestatus | grep "Current mode" | grep -qs "enforcing"; then
+            if [[ $PORT != '1194' ]]; then
+                semanage port -a -t openvpn_port_t -p "$PROTOCOL" "$PORT"
+            fi
+        fi
+    fi
+    #setup openvpn-iptables service
+    echo "[Unit]
 Before=network.target
 [Service]
 Type=oneshot
-ExecStart=$iptables_path -I INPUT -i $netCard -p $ovpnSetup_vpnProto --dport $ovpnSetup_vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
-ExecStart=$iptables_path -I INPUT -i tun+ -j ACCEPT
-ExecStart=$iptables_path -I FORWARD -i tun+ -j ACCEPT
-ExecStart=$iptables_path -I FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
-ExecStart=$iptables_path -I FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
-ExecStart=$iptables_path -t nat -A POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
-ExecStart=$iptables_path -I OUTPUT -o tun+ -j ACCEPT
-ExecStop=$iptables_path -D INPUT -i $netCard -p $ovpnSetup_vpnProto --dport $ovpnSetup_vpnPort -m state --state NEW,ESTABLISHED -j ACCEPT
-ExecStop=$iptables_path -D INPUT -i tun+ -j ACCEPT
-ExecStop=$iptables_path -D FORWARD -i tun+ -j ACCEPT
-ExecStop=$iptables_path -D FORWARD -i tun+ -o $netCard -m state --state RELATED,ESTABLISHED -j ACCEPT
-ExecStop=$iptables_path -D FORWARD -i $netCard -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
-ExecStop=$iptables_path -t nat -D POSTROUTING -s 10.8.0.0/24 -o $netCard -j MASQUERADE
-ExecStop=$iptables_path -D OUTPUT -o tun+ -j ACCEPT
+ExecStart=$IPTABLESPATH -I INPUT -i $NETCARD -p $PROTOCOL --dport $PORT -m state --state NEW,ESTABLISHED -j ACCEPT
+ExecStart=$IPTABLESPATH -I INPUT -i tun+ -j ACCEPT
+ExecStart=$IPTABLESPATH -I FORWARD -i tun+ -j ACCEPT
+ExecStart=$IPTABLESPATH -I FORWARD -i tun+ -o $NETCARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStart=$IPTABLESPATH -I FORWARD -i $NETCARD -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStart=$IPTABLESPATH -t nat -A POSTROUTING -s 10.8.0.0/24 -o $NETCARD -j MASQUERADE
+ExecStart=$IPTABLESPATH -I OUTPUT -o tun+ -j ACCEPT
+ExecStop=$IPTABLESPATH -D INPUT -i $NETCARD -p $PROTOCOL --dport $PORT -m state --state NEW,ESTABLISHED -j ACCEPT
+ExecStop=$IPTABLESPATH -D INPUT -i tun+ -j ACCEPT
+ExecStop=$IPTABLESPATH -D FORWARD -i tun+ -j ACCEPT
+ExecStop=$IPTABLESPATH -D FORWARD -i tun+ -o $NETCARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStop=$IPTABLESPATH -D FORWARD -i $NETCARD -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStop=$IPTABLESPATH -t nat -D POSTROUTING -s 10.8.0.0/24 -o $NETCARD -j MASQUERADE
+ExecStop=$IPTABLESPATH -D OUTPUT -o tun+ -j ACCEPT
 RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target" > /etc/systemd/system/openvpn-iptables.service
-#enable this service
-systemctl daemon-reload
-systemctl enable openvpn-iptables
-systemctl start openvpn-iptables
-#start openvpn service
-if [[ $OS == 'arch' || $OS == 'fedora' || $OS == 'centos' ]]; then
+    #enable openvpn-iptables service
+    systemctl daemon-reload
+    systemctl enable openvpn-iptables
+    systemctl start openvpn-iptables
     #fix openvz
     sed -i 's|LimitNPROC|#LimitNPROC|' /usr/lib/systemd/system/openvpn-server@.service
     #remove hardcoded fedora ciphers
     if [[ $OS == "fedora" ]]; then
         sed -i 's|--cipher AES-256-GCM --ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC:AES-128-CBC:BF-CBC||' /usr/lib/systemd/system/openvpn-server@.service
     fi
+    #enable openvpn-server@server
     systemctl daemon-reload
     systemctl enable openvpn-server@server
     systemctl restart openvpn-server@server
-elif [[ $OS == "ubuntu" ]] && [[ $VERSION_ID == "16.04" ]]; then
-    systemctl enable openvpn
-    systemctl start openvpn
-else
-    #fix openvz
-    sed -i 's|LimitNPROC|#LimitNPROC|' /lib/systemd/system/openvpn-server@.service
-    systemctl daemon-reload
-    systemctl enable openvpn-server@server
-    systemctl restart openvpn-server@server
-fi
-#generate common.ovpn
-echo "client
+    #generate common.ovpn
+    echo "client" > /etc/openvpn/server/common.ovpn
+    if [[ $PROTOCOL == 'udp' ]]; then
+        echo "proto udp" >> /etc/openvpn/server/common.ovpn
+        echo "explicit-exit-notify" >> /etc/openvpn/server/common.ovpn
+    elif [[ $PROTOCOL == 'tcp' ]]; then
+        echo "proto tcp-client" >> /etc/openvpn/server/common.ovpn
+    fi
+echo "remote $WANIP $PORT
 dev tun
-proto $ovpnSetup_vpnProto
-remote $ovpnSetup_vpnDomain $ovpnSetup_vpnPort
 resolv-retry infinite
 nobind
 persist-key
 persist-tun
 remote-cert-tls server
-auth SHA512
-cipher AES-256-GCM
+verify-x509-name $SERVER_NAME name
+auth $HMAC
+auth-nocache
+cipher $DATA_CIPHER
+tls-client
+tls-version-min 1.2
+tls-cipher $CONTROL_CIPHER
 ignore-unknown-option block-outside-dns
 setenv opt block-outside-dns #fix win10 dns leak
-auth-nocache
-verb 3" > /etc/openvpn/server/common.ovpn
-#generate lmvpna
-echo '#!/bin/bash
-if [ "$EUID" -ne 0 ]; then #checking root
-    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
+verb 3" >> /etc/openvpn/server/common.ovpn
+    if [[ $COMPRESSION == "y" ]]; then
+        echo "compress $COMPRESSION_ALGO" >> /etc/openvpn/server/common.ovpn
+    fi
+    #generate ovpnmanager
+    echo '#!/bin/bash
+VER="'$VER'"
+CLRX=$(echo -e "\e[39m ") #color reset
+CLRE=$(echo -e "\e[31m") #color light red
+CLRS=$(echo -e "\e[32m") #color light green
+CLRC=$(echo -e "\e[33m") #color light yellow
+CLRQ=$(echo -e "\e[94m") #color light blue
+CLRI=$(echo -e "\e[36m") #color cyan
+SYME=$(echo -e "[x]")
+SYMS=$(echo -e "[\xE2\x9C\x93]")
+SYMC=$(echo -e "[!]")
+SYMQ=$(echo -e "[?]")
+SYMI=$(echo -e "[i]")
+WELCOMEMSG="$CLRI
+ ####################################################################
+ ######################### OpenVPN Manager ##########################
+ ######################### for Linux v$VER ##########################
+ ####################################################################
+ Latest version available at:
+      '$LINK'
+$CLRX"
+#root check
+if [ "$EUID" -ne 0 ]; then
+    echo -e "$CLRE $SYME Script must be run as root.$CLRX"
     exit 1
 fi
-QUESTION="\e[94m [?] What is the client name (no spaces, no special characters)? \e[39m"
-until [[ $client =~ ^[a-zA-Z0-9_]+$ ]]; do
-    read -rp "$(echo -e $QUESTION)" -e client
-done
-clientExists=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c -E "/CN=$client\$")
-if [[ $clientExists == "1" ]]; then
-    echo -ne "\e[33m [!] Client \"$client\" already exists. Please choose another name.\e[39m\n"
-    exit
-else
-    cd /etc/openvpn/server/easy-rsa/
-    EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-client-full $client nopass
-    cat /etc/openvpn/server/common.ovpn > /etc/openvpn/client/$client.ovpn
-    echo "<ca>" >> /etc/openvpn/client/$client.ovpn
-    cat /etc/openvpn/server/easy-rsa/pki/ca.crt >> /etc/openvpn/client/$client.ovpn
-    echo "</ca>" >> /etc/openvpn/client/$client.ovpn
-    echo "<cert>" >> /etc/openvpn/client/$client.ovpn
-    sed -ne "/BEGIN CERTIFICATE/,$ p" /etc/openvpn/server/easy-rsa/pki/issued/$client.crt >> /etc/openvpn/client/$client.ovpn
-    echo "</cert>" >> /etc/openvpn/client/$client.ovpn
-    echo "<key>" >> /etc/openvpn/client/$client.ovpn
-    cat /etc/openvpn/server/easy-rsa/pki/private/$client.key >> /etc/openvpn/client/$client.ovpn
-    echo "</key>" >> /etc/openvpn/client/$client.ovpn
-    echo "<tls-crypt>" >> /etc/openvpn/client/$client.ovpn
-    sed -ne "/BEGIN OpenVPN Static key/,$ p" /etc/openvpn/server/tc.key >> /etc/openvpn/client/$client.ovpn
-    echo "</tls-crypt>" >> /etc/openvpn/client/$client.ovpn
-    echo -ne "\033[32m [i] Your new $client certificate is located at \"/etc/openvpn/client/\".\e[39m\n"
-fi' > /usr/sbin/lmvpna
-chmod +x /usr/sbin/lmvpna
-#generate lmvpnl
-echo '#!/bin/bash
-if [ "$EUID" -ne 0 ]; then #checking root
-    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
-    exit 1
-fi
-clientsTotal=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
-if [[ $clientsTotal == "0" ]]; then
-    echo -ne "\e[33m [!] You have no clients to list.\e[39m\n"
-    exit 1
-fi
-echo -ne "\033[32m [i] List of current active certificates: \e[39m\n"
-tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "' > /usr/sbin/lmvpnl
-chmod +x /usr/sbin/lmvpnl
-#generate lmvpnd
-echo '#!/bin/bash
-if [ "$EUID" -ne 0 ]; then #checking root
-    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
-    exit 1
-fi
-clientsTotal=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
-if [[ $clientsTotal == "0" ]]; then
-    echo -ne "\e[33m [!] There are no client certificates to revoke.\e[39m\n"
-    exit 1
-fi
-if [[ $clientsTotal == "1" ]]; then
-    helpText="1"
-else
-    helpText="1-$clientsTotal"
-fi
-echo -ne "\033[32m [i] List of current active certificates: \e[39m\n"
-tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
-QUESTION="\e[94m [i] Which certificate do you want to revoke [$helpText]? \e[39m"
-until [[ $clientNum -ge 1 && $clientNum -le $clientsTotal ]]; do
-    read -rp "$(echo -e $QUESTION)" clientNum
-done
-certname=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | sed -n "$clientNum"p)
-cd /etc/openvpn/server/easy-rsa/
-./easyrsa --batch revoke $certname
-EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl
-rm -f /etc/openvpn/server/crl.pem
-cp pki/crl.pem /etc/openvpn/server/crl.pem
-chmod 644 /etc/openvpn/server/crl.pem
-rm -f "/etc/openvpn/client/$certname.ovpn"
-sed -i "/^$certname,.*/d" /etc/openvpn/server/ipp.txt
-lmvpnr
-echo -ne "\033[32m [i] Certificate revoked successfully.\e[39m\n"' > /usr/sbin/lmvpnd
-chmod +x /usr/sbin/lmvpnd
-#generate lmvpnr
-echo '#!/bin/bash
-if [ "$EUID" -ne 0 ]; then #checking root
-    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
-    exit 1
-fi
-#systemctl restart openvpn-server@server
-service openvpn-iptables stop
-service openvpn-server@server stop
-service openvpn-iptables start
-service openvpn-server@server start
-if [[ ! "$(systemctl is-active openvpn-server@server)" = "active" ]]; then
-    echo -ne "\033[31m [x] OpenVPN is not running.\e[39m\n"
-elif [[ ! "$(systemctl is-active openvpn-iptables)" = "active" ]]; then
-    echo -ne "\033[31m [x] OpenVPN-iptables is not running.\e[39m\n"
-else
-    echo -ne "\033[32m [i] OpenVPN restarted successfully.\e[39m\n"
-fi' > /usr/sbin/lmvpnr
-chmod +x /usr/sbin/lmvpnr
-#generate lmvpnv
-echo '#!/bin/bash
-if [ "$EUID" -ne 0 ]; then #checking root
-    echo -ne "\033[31m [x] Script must be run as root. Try \"sudo `basename $0`\"\e[39m\n"
-    exit 1
-fi
-journalctl -u openvpn-server@server -f -n 30' > /usr/sbin/lmvpnv
-chmod +x /usr/sbin/lmvpnv
 
-############################################################################
-########## FINISHING #######################################################
-############################################################################
-echo -ne "\033[32m [i] OpenVPN was installed and configured on port $ovpnSetup_vpnPort.\e[39m\n"
-echo -ne "\033[32m         To add a client use \"sudo lmvpna\".\e[39m\n"
-echo -ne "\033[32m         To delete (revoke) a client use \"sudo lmvpnd\".\e[39m\n"
-echo -ne "\033[32m         To list clients use \"sudo lmvpnl\".\e[39m\n"
-echo -ne "\033[32m         To restart OpenVPN service use \"sudo lmvpnr\".\e[39m\n"
-echo -ne "\033[32m         To see status use \"sudo lmvpnv\".\e[39m\n"
-echo -ne "\033[32m         Client certificates are saved at \"/etc/openvpn/client\".\e[39m\n"
+function osCheck() {
+    if [[ -e /etc/debian_version ]]; then #debian, rasbian, ubuntu
+        OS="debian"
+        source /etc/os-release
+    elif [[ -e /etc/system-release ]]; then #amzn, centos, fedora
+        source /etc/os-release
+        if [[ $ID == "fedora" ]]; then
+            OS="fedora"
+        fi
+        if [[ $ID == "centos" ]]; then
+            OS="centos"
+        fi
+        if [[ $ID == "amzn" ]]; then
+            OS="amzn"
+        fi
+    elif [[ -e /etc/arch-release ]]; then #archlinux
+        OS="arch"
+    fi
+}
+
+function clientAdd() {
+    until [[ $CLIENT =~ ^[a-zA-Z0-9_]+$ ]]; do
+        read -rp "$CLRQ $SYMQ What is the client name (no spaces, no special characters)?$CLRX" -e CLIENT
+    done
+    #pass
+    until [[ $PASSCRYPT =~ (y|n) ]]; do
+        read -rp "$CLRQ $SYMQ Do you want to ecrypt the private key with a password? [y/n]:$CLRX" -e -i n PASSCRYPT
+    done
+    EXISTS=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c -E "/CN=$CLIENT\$")
+    if [[ $EXISTS == "1" ]]; then
+        echo "$CLRC $SYMC Client \"$CLIENT\" already exists. Please choose another name.$CLRX"
+        exit
+    else
+        cd /etc/openvpn/server/easy-rsa/
+        case $PASSCRYPT in
+        n)
+            ./easyrsa build-client-full "$CLIENT" nopass
+            ;;
+        y)
+            ./easyrsa build-client-full "$CLIENT"
+            ;;
+        esac
+        #detect tls-auth or tls-crypt
+        if grep -qs "^tls-crypt" /etc/openvpn/server/server.conf; then
+            TLS_TYPE="1"
+        elif grep -qs "^tls-auth" /etc/openvpn/server/server.conf; then
+            TLS_TYPE="2"
+        fi
+        cat /etc/openvpn/server/common.ovpn > /etc/openvpn/client/$CLIENT.ovpn
+        echo "<ca>" >> /etc/openvpn/client/$CLIENT.ovpn
+        cat /etc/openvpn/server/easy-rsa/pki/ca.crt >> /etc/openvpn/client/$CLIENT.ovpn
+        echo "</ca>" >> /etc/openvpn/client/$CLIENT.ovpn
+        echo "<cert>" >> /etc/openvpn/client/$CLIENT.ovpn
+        sed -ne "/BEGIN CERTIFICATE/,$ p" /etc/openvpn/server/easy-rsa/pki/issued/$CLIENT.crt >> /etc/openvpn/client/$CLIENT.ovpn
+        echo "</cert>" >> /etc/openvpn/client/$CLIENT.ovpn
+        echo "<key>" >> /etc/openvpn/client/$CLIENT.ovpn
+        cat /etc/openvpn/server/easy-rsa/pki/private/$CLIENT.key >> /etc/openvpn/client/$CLIENT.ovpn
+        echo "</key>" >> /etc/openvpn/client/$CLIENT.ovpn
+        case $TLS_TYPE in
+        1)
+            echo "<tls-crypt>" >> /etc/openvpn/client/$CLIENT.ovpn
+            sed -ne "/BEGIN OpenVPN Static key/,$ p" /etc/openvpn/server/tls-crypt.key >> /etc/openvpn/client/$CLIENT.ovpn
+            echo "</tls-crypt>" >> /etc/openvpn/client/$CLIENT.ovpn
+            ;;
+        2)
+            echo "key-direction 1" >> /etc/openvpn/client/$CLIENT.ovpn
+            echo "<tls-auth>" >> /etc/openvpn/client/$CLIENT.ovpn
+            sed -ne "/BEGIN OpenVPN Static key/,$ p" /etc/openvpn/server/tls-auth.key >> /etc/openvpn/client/$CLIENT.ovpn
+            echo "</tls-auth>" >> /etc/openvpn/client/$CLIENT.ovpn
+            ;;
+        esac
+        echo "$CLRS $SYMS Your new $CLIENT certificate is located at: $CLRI/etc/openvpn/client/$CLIENT.ovpn$CLRX"
+    fi
+}
+
+function clientList() {
+    CLIENTTOTAL=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
+    if [[ $CLIENTTOTAL == "0" ]]; then
+        echo "$CLRC $SYMC You have no clients to list.$CLRX"
+        exit 1
+    fi
+    echo "$CLRI $SYMI List of current active clients:"
+    tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
+    echo -n "$CLRX"
+}
+
+function clientRevoke() {
+    CLIENTTOTAL=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
+    if [[ $CLIENTTOTAL == "0" ]]; then
+        echo "$CLRI $SYMI There are no client certificates to revoke."
+        exit 1
+    fi
+    if [[ $CLIENTTOTAL == "1" ]]; then
+        helpText="1"
+    else
+        helpText="1-$CLIENTTOTAL"
+    fi
+    echo "$CLRI $SYMI List of current active certificates:"
+    tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
+    until [[ $CLIENTNUM -ge 1 && $CLIENTNUM -le $CLIENTTOTAL ]]; do
+        read -rp "$CLRQ $SYMQ Which client you want to revoke? [$helpText]:$CLRX" CLIENTNUM
+    done
+    CERTNAME=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | sed -n "$CLIENTNUM"p)
+    cd /etc/openvpn/server/easy-rsa/
+    ./easyrsa --batch revoke $CERTNAME
+    EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl
+    rm -f /etc/openvpn/server/crl.pem
+    cp pki/crl.pem /etc/openvpn/server/crl.pem
+    chmod 644 /etc/openvpn/server/crl.pem
+    rm -f "/etc/openvpn/client/$CERTNAME.ovpn"
+    sed -i "/^$CERTNAME,.*/d" /etc/openvpn/server/ipp.txt
+    openvpnRestart
+    echo "$CLRS $SYMS Certificate for $CERTNAME revoked successfully.$CLRX"
+}
+
+function openvpnLogs() {
+    journalctl -u openvpn-server@server -f -n 30
+}
+
+function openvpnRestart () {
+    systemctl stop openvpn-server@server
+    systemctl stop openvpn-iptables
+    systemctl start openvpn-iptables
+    systemctl start openvpn-server@server
+    if [[ ! "$(systemctl is-active openvpn-server@server)" = "active" ]]; then
+        echo "$CLRE $SYME OpenVPN is not running.$CLRX"
+    elif [[ ! "$(systemctl is-active openvpn-iptables)" = "active" ]]; then
+        echo "$CLRE $SYME OpenVPN-iptables is not running.$CLRX"
+    else
+        echo "$CLRS $SYMS OpenVPN restarted successfully.$CLRX"
+    fi
+}
+
+function openvpnUninstall() {
+    osCheck
+    until [[ $UNINSTALL  =~ (y|n) ]]; do
+        read -rp "$CLRQ $SYMQ What is the client name (no spaces, no special characters)?$CLRX" -e -i n  UNINSTALL
+    done
+    if [[ $UNINSTALL == "y" ]]; then
+        #get openvpn confs from server.conf
+        PORT=$(grep "^port " /etc/openvpn/server/server.conf | cut -d " " -f 2)
+        PROTOCOL=$(grep "^proto " /etc/openvpn/server/server.conf | cut -d " " -f 2)
+        #stop, disable and cleanup openvpn-server@server
+        systemctl stop openvpn-server@server
+        systemctl disable openvpn-server@server
+        rm /usr/lib/systemd/system/openvpn-server@.service
+        #stop, disable and cleanup openvpn-iptables
+        systemctl stop openvpn-iptables
+        systemctl disable openvpn-iptables
+        rm /etc/systemd/system/openvpn-iptables.service
+        #apply changes
+        systemctl daemon-reload
+        #selinux
+        if hash sestatus 2>/dev/null; then
+            if sestatus | grep "Current mode" | grep -qs "enforcing"; then
+                if [[ $PORT != "1194" ]]; then
+                    semanage port -d -t openvpn_port_t -p "$PROTOCOL" "$PORT"
+                fi
+            fi
+        fi
+        #uninstall
+        if [[ $OS =~ (debian|ubuntu) ]]; then
+            apt-get autoremove --purge -y openvpn
+            if [[ -e /etc/apt/sources.list.d/openvpn.list ]]; then
+                rm /etc/apt/sources.list.d/openvpn.list
+                apt-get update
+            fi
+        elif [[ $OS == "arch" ]]; then
+            pacman --noconfirm -R openvpn
+        elif [[ $OS =~ (centos|amzn) ]]; then
+            yum remove -y openvpn
+        elif [[ $OS == "fedora" ]]; then
+            dnf remove -y openvpn
+        fi
+        #cleanup
+        rm -rf /etc/openvpn
+        rm -rf /usr/share/doc/openvpn*
+        rm -f /etc/sysctl.d/20-openvpn.conf
+        rm -- "$0"
+        echo "$CLRS $SYMS OpenVPN uninstalled successfully.$CLRX"
+    else
+        echo "$CLRI $SYMI OpenVPN uninstall canceled. Nothing was changed.$CLRX"
+    fi
+}
+
+function openvpnManage() {
+    echo "$WELCOMEMSG"
+    until [[ $SEL =~ ^[1-7]$ ]]; do
+        echo "$CLRI $SYMI OpenVPN Manage Menu:"
+        echo "      1- Add a new client"
+        echo "      2- List active clients"
+        echo "      3- Revoke existing client"
+        echo "      4- See OpenVPN logs (journalctl)"
+        echo "      5- Restart OpenVPN service"
+        echo "      6- Uninstall OpenVPN"
+        echo "      7- Exit$CLRX"
+        read -rp "$CLRQ $SYMQ What do you want to do? [1-5]:$CLRX" SEL
+    done
+
+    case $SEL in
+    1)
+        clientAdd
+        ;;
+    2)
+        clientList
+        ;;
+    3)
+        clientRevoke
+        ;;
+    4)
+        openvpnLogs
+        ;;
+    5)
+        openvpnRestart
+        ;;
+    6)
+        openvpnUninstall
+        ;;
+    7)
+        exit
+        ;;
+    esac
+}
+openvpnManage' > /usr/sbin/lmovpn
+    chmod +x /usr/sbin/lmovpn
+
+    ############################################################################
+    ########## FINISHING #######################################################
+    ############################################################################
+    echo "$CLRS $SYMS OpenVPN was installed and configured successfully on $WANIP:$PORT ${PROTOCOL^^}.$CLRX"
+    echo "$CLRI $SYMI Please open port $PORT ${PROTOCOL^^} on your router."
+    echo "$CLRI $SYMI Use ${CLRS}\"sudo lmovpn\"${CLRI} to manage your OpenVPN server.$CLRX"
+    #cleanup
+    rm -- "$0"
+}
+
+init
+osCheck
+installOvpn
