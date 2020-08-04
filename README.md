@@ -83,6 +83,18 @@ You can also run this script silently with default options. The silent option wi
 ```
 SILENT=y sudo -E ./openvpn-installer
 ```
+Silent install will use the options below:
+*	Port 1194
+*	UDP protocol
+*	Google DNS resolver
+*	no compression
+*	AES-256-GCM cipher for data channel
+*	ECDSA certificate with prime256v1 curve
+*	TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256 cipher for control channel
+*	ECDH for Diffie-Hellman key with prime256v1 curve
+*	SHA-256 for digest algorithm
+*	tls-crypt for additional security
+
 Here are some examples if you want to install silently with custom options:
 ```
 #change PORT to 2432 and PROTOCOL to tcp
@@ -92,9 +104,9 @@ SILENT=y PORT=2432 PROTOCOL=tcp sudo -E ./openvpn-installer
 SILENT=y PORT=23423 DNS_TYPE=2 sudo -E ./openvpn-installer
 
 #change DATACIPHER_TYPE to AES-256-CBC and CERT_TYPE to RSA
-#since RSA_TYPE and CHANNELCIPHER_TYPE are not defined,
+#since RSA_TYPE and CONTROLCIPHER_TYPE are not defined,
 #default 2048 bits will be used for RSA_TYPE
-#and TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 will be used for CHANNELCIPHER_TYPE
+#and TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 will be used for CONTROLCIPHER_TYPE
 SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
 ```
 
@@ -136,7 +148,7 @@ SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
             *   1 = prime256v1 (default)
             *   2 = secp384r1
             *   3 = secp521r1
-        *   CHANNELCIPHER_TYPE=[1-2]
+        *   CONTROLCIPHER_TYPE=[1-2]
             *   1 = TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256 (default)
             *   2 = TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
     *   2 = RSA
@@ -144,7 +156,7 @@ SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
             *   1 = 2048 bits (default)
             *   2 = 3072 bits
             *   3 = 4096 bits
-        *   CHANNELCIPHER_TYPE=[1-2]
+        *   CONTROLCIPHER_TYPE=[1-2]
             *   1 = TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 (default)
             *   2 = TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384
 *   DH_TYPE=[1-2]

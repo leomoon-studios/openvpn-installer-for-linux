@@ -281,14 +281,14 @@ function installMenu() {
     #control cipher based on cert type
     case $CERT_TYPE in
     1)
-        until [[ $CHANNELCIPHER_TYPE =~ ^[1-2]$ ]]; do
+        until [[ $CONTROLCIPHER_TYPE =~ ^[1-2]$ ]]; do
             echo "$CLRI $SYMI Cipher for control channel:"
             echo "      1- ECDHE-ECDSA-AES-128-GCM-SHA256 (recommended)"
             echo "      2- ECDHE-ECDSA-AES-256-GCM-SHA384$CLRX"
-            read -rp "$CLRQ $SYMQ Which cipher you want to use for control channel? [1-2]:$CLRX" -e -i 1 CHANNELCIPHER_TYPE
+            read -rp "$CLRQ $SYMQ Which cipher you want to use for control channel? [1-2]:$CLRX" -e -i 1 CONTROLCIPHER_TYPE
             echo ""
         done
-        case $CHANNELCIPHER_TYPE in
+        case $CONTROLCIPHER_TYPE in
         1)
             CONTROL_CIPHER="TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256"
             ;;
@@ -298,14 +298,14 @@ function installMenu() {
         esac
         ;;
     2)
-        until [[ $CHANNELCIPHER_TYPE =~ ^[1-2]$ ]]; do
+        until [[ $CONTROLCIPHER_TYPE =~ ^[1-2]$ ]]; do
             echo "$CLRI $SYMI Cipher for control channel:"
             echo "      1- ECDHE-RSA-AES-128-GCM-SHA256 (recommended)"
             echo "      2- ECDHE-RSA-AES-256-GCM-SHA384$CLRX"
-            read -rp "$CLRQ $SYMQ Which cipher you want to use for control channel? [1-2]:$CLRX" -e -i 1 CHANNELCIPHER_TYPE
+            read -rp "$CLRQ $SYMQ Which cipher you want to use for control channel? [1-2]:$CLRX" -e -i 1 CONTROLCIPHER_TYPE
             echo ""
         done
-        case $CHANNELCIPHER_TYPE in
+        case $CONTROLCIPHER_TYPE in
         1)
             CONTROL_CIPHER="TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256"
             ;;
@@ -491,7 +491,7 @@ function installOvpn() {
         CERT_TYPE=${CERT_TYPE:-1}
         CURVE_TYPE=${CURVE_TYPE:-1}
         RSA_TYPE=${RSA_TYPE:-1}
-        CHANNELCIPHER_TYPE=${CHANNELCIPHER_TYPE:-1}
+        CONTROLCIPHER_TYPE=${CONTROLCIPHER_TYPE:-1}
         DH_TYPE=${DH_TYPE:-1}
         DHCURVE_TYPE=${DHCURVE_TYPE:-1}
         DHSIZE_TYPE=${DHSIZE_TYPE:-1}
