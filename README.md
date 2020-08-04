@@ -174,9 +174,9 @@ You can also perform management options silently while using lmovpn. Here are so
 MENU=1 CLIENT=amin PASS=n sudo -E lmovpn
 
 #add multiple clients
-userlist=(desktop laptop mobile)
-for user in ${userlist[@]};do
-   MENU=1 CLIENT=$user PASS=n sudo -E lmovpn
+USERS=(desktop laptop mobile)
+for i in ${USERS[@]};do
+   MENU=1 CLIENT=$i PASS=n sudo -E lmovpn
 done
 
 #restart OpenVPN server
