@@ -42,7 +42,14 @@ WELCOMEMSG="$CLRI
  ####################################################################
  This script will setup a secure OpenVPN server.
 
- Latest version available at:
+ Supported distros:
+   Amazon Linux 2 x64
+   Arch Linux x64, arm64
+   CentOS 7 x86, x64, armf, arm64
+   CentOS 8 x64, arm64
+   Ubuntu >= 18.04 x86, x64, armf, arm64
+
+ Latest version and documentation at:
       $LINK
 $CLRX"
 SILENTMSG="$CLRI $SYMI Running in SILENT mode...$CLRX"
@@ -769,7 +776,7 @@ WELCOMEMSG="$CLRI
  ######################### OpenVPN Manager ##########################
  ######################### for Linux v$VER ##########################
  ####################################################################
- Latest version available at:
+ Latest version and documentation at:
       '$LINK'
 $CLRX"
 #root check
@@ -801,10 +808,12 @@ function osCheck() {
 function clientAdd() {
     until [[ $CLIENT =~ ^[a-zA-Z0-9_]+$ ]]; do
         read -rp "$CLRQ $SYMQ What is the client name (no spaces, no special characters)?$CLRX" -e CLIENT
+        echo ""
     done
     #pass
-    until [[ $PASSCRYPT =~ (y|n) ]]; do
-        read -rp "$CLRQ $SYMQ Do you want to ecrypt the private key with a password? [y/n]:$CLRX" -e -i n PASSCRYPT
+    until [[ $PASS =~ (y|n) ]]; do
+        read -rp "$CLRQ $SYMQ Do you want to ecrypt the private key with a password? [y/n]:$CLRX" -e -i n PASS
+        echo ""
     done
     EXISTS=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c -E "/CN=$CLIENT\$")
     if [[ $EXISTS == "1" ]]; then
@@ -812,7 +821,7 @@ function clientAdd() {
         exit
     else
         cd /etc/openvpn/server/easy-rsa/
-        case $PASSCRYPT in
+        case $PASS in
         n)
             ./easyrsa build-client-full "$CLIENT" nopass
             ;;
@@ -867,7 +876,7 @@ function clientList() {
 function clientRevoke() {
     CLIENTTOTAL=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
     if [[ $CLIENTTOTAL == "0" ]]; then
-        echo "$CLRI $SYMI There are no client certificates to revoke."
+        echo "$CLRC $SYMC There are no client certificates to revoke.$CLRX"
         exit 1
     fi
     if [[ $CLIENTTOTAL == "1" ]]; then
@@ -879,6 +888,7 @@ function clientRevoke() {
     tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | nl -s ") "
     until [[ $CLIENTNUM -ge 1 && $CLIENTNUM -le $CLIENTTOTAL ]]; do
         read -rp "$CLRQ $SYMQ Which client you want to revoke? [$helpText]:$CLRX" CLIENTNUM
+        echo ""
     done
     CERTNAME=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d "=" -f 2 | sed -n "$CLIENTNUM"p)
     cd /etc/openvpn/server/easy-rsa/
@@ -915,6 +925,7 @@ function openvpnUninstall() {
     osCheck
     until [[ $UNINSTALL  =~ (y|n) ]]; do
         read -rp "$CLRQ $SYMQ What is the client name (no spaces, no special characters)?$CLRX" -e -i n  UNINSTALL
+        echo ""
     done
     if [[ $UNINSTALL == "y" ]]; then
         #get openvpn confs from server.conf
@@ -965,19 +976,19 @@ function openvpnUninstall() {
 
 function openvpnManage() {
     echo "$WELCOMEMSG"
-    until [[ $SEL =~ ^[1-7]$ ]]; do
+    until [[ $MENU =~ ^[1-7]$ ]]; do
         echo "$CLRI $SYMI OpenVPN Manage Menu:"
         echo "      1- Add a new client"
         echo "      2- List active clients"
         echo "      3- Revoke existing client"
-        echo "      4- See OpenVPN logs (journalctl)"
+        echo "      4- Debug OpenVPN using journalctl"
         echo "      5- Restart OpenVPN service"
         echo "      6- Uninstall OpenVPN"
         echo "      7- Exit$CLRX"
-        read -rp "$CLRQ $SYMQ What do you want to do? [1-5]:$CLRX" SEL
+        read -rp "$CLRQ $SYMQ What do you want to do? [1-5]:$CLRX" MENU
+        echo ""
     done
-
-    case $SEL in
+    case $MENU in
     1)
         clientAdd
         ;;
