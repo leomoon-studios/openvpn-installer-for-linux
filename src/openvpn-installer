@@ -395,7 +395,7 @@ function installMenu() {
     done
     #domain
     until [[ $DOMAIN_Q =~ (y|n) ]]; do
-        read -rp "$CLRQ $SYMQ Do you have a domain configured on this server? [y/n]:$CLRX" -e -i n DOMAIN_Q
+        read -rp "$CLRQ $SYMQ Do you have a domain configured on this server (optional)? [y/n]:$CLRX" -e -i n DOMAIN_Q
         echo ""
     done
     if [[ $DOMAIN_Q == "y" ]]; then

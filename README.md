@@ -4,6 +4,8 @@ Having your own OpenVPN service is very important these days but setting one up 
 
 This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora and Arch Linux at home or on a VPS.
 
+It is recommended to use the default encryption settings and only change port, protocol, DNS resolver and domain settings.
+
 ## Features
 *   Installs and configures a secure OpenVPN server on
     *   Amazon Linux 2 x64
@@ -13,9 +15,9 @@ This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora
     *   Ubuntu >= 18.04 x86, x64, armf, arm64
 *   Automatic setup of firewall rules using iptables
 *   Has many customizable options
-*   Includes silent install
 *   Ability to define a FQDN with OpenVPN
-*   Manage OpenVPN server after install using "lmovpn" command:
+*   Includes silent and CLI install
+*   Includes silent and CLI management (&ldquo;sudo lmovpn&rdquo;):
     *   Add a new client
     *   List active clients
     *   Revoke existing client
@@ -74,16 +76,36 @@ Run it and follow the onscreen instructions:
 ```
 cd ~/ && sudo ./openvpn-installer
 ```
-After installation is done, use "sudo lmovpn" to manage your OpenVPN server.
+After installation is done, use &ldquo;sudo lmovpn&rdquo; to manage your OpenVPN server.
 
-## Silent Options
+## Silent Install
+You can also run this script silently with default options. The silent option will use the best encryption settings.
+```
+SILENT=y sudo -E ./openvpn-installer
+```
+Here are some examples if you want to install silently with custom options:
+```
+#change PORT to 2432 and PROTOCOL to tcp
+SILENT=y PORT=2432 PROTOCOL=tcp sudo -E ./openvpn-installer
+
+#change PORT to 23423, PROTOCOL to tcp and DNS_TYPE to Cloudflare
+SILENT=y PORT=23423 DNS_TYPE=2 sudo -E ./openvpn-installer
+
+#change DATACIPHER_TYPE to AES-256-CBC and CERT_TYPE to RSA
+#since RSA_TYPE and CHANNELCIPHER_TYPE are not defined,
+#default 2048 bits will be used for RSA_TYPE
+#and TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 will be used for CHANNELCIPHER_TYPE
+SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
+```
+
+## Silent Install Switches
 *   SILENT=[y|n]
 *   PORT=[1-65535]
 *   PROTOCOL=[tcp|udp]
     *   udp (default)
     *   tcp
 *   DNS_TYPE=[1-11]
-    *   1 = Google (global)
+    *   1 = Google (global) (default)
     *   2 = Cloudflare (global)
     *   3 = AdGuard DNS (global)
     *   4 = OpenDNS (global)
@@ -95,10 +117,12 @@ After installation is done, use "sudo lmovpn" to manage your OpenVPN server.
     *   10 = Yandex Basic (Russia)
     *   11 = Current system resolvers in /etc/resolv.conf
 *   COMPRESSION=[y|n]
-*   COMPRESSION_TYPE=[1-3]
-    *   1 = lz4-v2 (default)
-    *   2 = lz4
-    *   3 = lzo
+    *   n = No Compression (default)
+    *   y = With Compression (not recommended)
+        *   COMPRESSION_TYPE=[1-3]
+            *   1 = lz4-v2 (default)
+            *   2 = lz4
+            *   3 = lzo
 *   DATACIPHER_TYPE=[1-6]
     *   1 = AES-256-GCM (default)
     *   2 = AES-192-GCM
@@ -141,30 +165,8 @@ After installation is done, use "sudo lmovpn" to manage your OpenVPN server.
 *   TLS_TYPE[1-2]
     *   1 = tls-crypt (default)
     *   2 = tls-auth
-*   DOMAIN="domain.tld"
+*   DOMAIN=[FQDN-STRING]
 
-## Silent Install
-You can also run this script silently with default options.
-```
-SILENT=y sudo -E ./openvpn-installer
-```
-Here are some examples if you want to install silently with custom options:
-```
-#change PORT to 2432 and PROTOCOL to tcp
-SILENT=y PORT=2432 PROTOCOL=tcp sudo -E ./openvpn-installer
-
-#enable compression and use the default COMPRESSION_TYPE if not defined
-SILENT=y COMPRESSION=y sudo -E ./openvpn-installer
-
-#change PORT to 23423, PROTOCOL to tcp and DNS_TYPE to Cloudflare
-SILENT=y PORT=23423 DNS_TYPE=2 sudo -E ./openvpn-installer
-
-#change DATACIPHER_TYPE to AES-256-CBC and CERT_TYPE to RSA
-#since RSA_TYPE and CHANNELCIPHER_TYPE are not defined,
-#default 2048 bits will be used for RSA_TYPE
-#and TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 will be used for CHANNELCIPHER_TYPE
-SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
-```
 
 ## Silent Management
 You can also perform management options silently while using lmovpn. Here are some examples:
