@@ -20,7 +20,6 @@ This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora
     *   Debug OpenVPN using journalctl
     *   Restart OpenVPN service
     *   Uninstall OpenVPN
-*   ... and more
 
 ## Authors
 *   Amin Babaeipanah
@@ -156,7 +155,7 @@ SILENT=y PORT=2432 PROTOCOL=tcp sudo -E ./openvpn-installer
 SILENT=y COMPRESSION=y sudo -E ./openvpn-installer
 
 #change PORT to 23423, PROTOCOL to tcp and DNS_TYPE to Cloudflare
-SILENT=y PORT=23423 DNS_TYPE=2 DNS_TYPE=2 sudo -E ./openvpn-installer
+SILENT=y PORT=23423 DNS_TYPE=2 sudo -E ./openvpn-installer
 
 #change DATACIPHER_TYPE to AES-256-CBC and CERT_TYPE to RSA
 #since RSA_TYPE and CHANNELCIPHER_TYPE are not defined,
