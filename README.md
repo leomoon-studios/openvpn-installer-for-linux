@@ -34,6 +34,8 @@ It is recommended to use the default encryption settings and only change port, p
 *   No IPv6 support
 
 ## Changelog
+*   3.03:
+    *   Fixed OpenVPN service path
 *   3.02:
     *   Fixed self-delete
 *   3.01:

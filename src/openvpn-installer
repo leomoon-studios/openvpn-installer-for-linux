@@ -19,7 +19,7 @@
 ############################################################################
 ########## INTERNAL VARIABLES ##############################################
 ############################################################################
-VER="3.02"
+VER="3.03"
 SCRIPTDIR=$PWD
 LINK="https://lms.to/lmovpn"
 CLRX=$(echo -e "\e[39m ") #color reset
@@ -721,7 +721,11 @@ WantedBy=multi-user.target" > /etc/systemd/system/openvpn-iptables.service
     systemctl enable openvpn-iptables
     systemctl start openvpn-iptables
     #fix openvz
-    sed -i 's|LimitNPROC|#LimitNPROC|' /usr/lib/systemd/system/openvpn-server@.service
+    if [[ $OS == 'arch' || $OS == 'fedora' || $OS == 'centos' ]]; then
+        sed -i 's|LimitNPROC|#LimitNPROC|' /usr/lib/systemd/system/openvpn-server@.service
+    else
+        sed -i 's|LimitNPROC|#LimitNPROC|' /lib/systemd/system/openvpn-server@.service
+    fi
     #remove hardcoded fedora ciphers
     if [[ $OS == "fedora" ]]; then
         sed -i 's|--cipher AES-256-GCM --ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC:AES-128-CBC:BF-CBC||' /usr/lib/systemd/system/openvpn-server@.service
