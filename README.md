@@ -12,6 +12,7 @@ This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora
 *   Automatic setup of firewall rules using iptables
 *   Has many customizable options
 *   Includes silent install
+*   Ability to define a FQDN with OpenVPN
 *   Manage OpenVPN server after install using "lmovpn" command:
     *   Add a new client
     *   List active clients
@@ -22,10 +23,10 @@ This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora
 *   ... and more
 
 ## Authors
-    * Amin Babaeipanah
+*   Amin Babaeipanah
 
 ## Limitations
-    * No IPv6 support
+*   No IPv6 support
 
 ## Changelog
 *   3.01:
@@ -34,7 +35,7 @@ This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora
 *   3.00:
     *   Complete rewrite
     *   Added CLI support with setup customization
-    *   Added silent mode with setup customization
+    *   Added silent install with setup customization
 *   2.00:
     *   Added multi distro support
     *   Minor improvements
@@ -155,6 +156,33 @@ SILENT=y COMPRESSION=y sudo -E ./openvpn-installer
 #change PORT to 23423, PROTOCOL to tcp and DNS_TYPE to Cloudflare
 SILENT=y PORT=23423 DNS_TYPE=2 DNS_TYPE=2 sudo -E ./openvpn-installer
 
-#change DATACIPHER_TYPE to AES-256-CBC, CERT_TYPE to RSA, RSA_TYPE to 2048 bits (default) and CHANNELCIPHER_TYPE to TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 (default)
+#change DATACIPHER_TYPE to AES-256-CBC and CERT_TYPE to RSA
+#since RSA_TYPE and CHANNELCIPHER_TYPE are not defined,
+#default 2048 bits will be used for RSA_TYPE
+#and TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256 will be used for CHANNELCIPHER_TYPE
 SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
 ```
+
+## Silent Management
+You can also perform management options silently while using lmovpn. Here are some examples:
+
+```
+#add a new client
+MENU=1 CLIENT=amin PASS=n sudo -E lmovpn
+
+#add multiple clients
+userlist=(desktop laptop mobile)
+for user in ${userlist[@]};do
+   MENU=1 CLIENT=$user PASS=n sudo -E lmovpn
+done
+
+#restart OpenVPN server
+MENU=5 sudo -E lmovpn
+```
+
+## Compatibility
+*   Amazon Linux 2 x64
+*   Arch Linux x64, arm64
+*   CentOS 7 x86, x64, armf, arm64
+*   CentOS 8 x64, arm64
+*   Ubuntu >= 18.04 x86, x64, armf, arm64
