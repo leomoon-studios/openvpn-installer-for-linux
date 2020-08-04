@@ -12,6 +12,8 @@ It is recommended to use the default encryption settings and only change port, p
     *   Arch Linux x64, arm64
     *   CentOS 7 x86, x64, armf, arm64
     *   CentOS 8 x64, arm64
+    *   Debian >= 9 x86, x64, armf arm64
+    *   Fedora >= 27 x64
     *   Ubuntu >= 18.04 x86, x64, armf, arm64
 *   Automatic setup of firewall rules using iptables
 *   Has many customization options
@@ -202,4 +204,6 @@ MENU=5 sudo -E lmovpn
 *   Arch Linux x64, arm64
 *   CentOS 7 x86, x64, armf, arm64
 *   CentOS 8 x64, arm64
+*   Debian >= 9 x86, x64, armf arm64
+*   Fedora >= 27 x64
 *   Ubuntu >= 18.04 x86, x64, armf, arm64
