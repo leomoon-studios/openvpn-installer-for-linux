@@ -1,6 +1,8 @@
 # OpenVPN Installer for Linux
 ## Introduction
-This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora and Arch Linux.
+Having your own OpenVPN service is very important these days but setting one up can be very tedious!
+
+This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora and Arch Linux at home or on a VPS.
 
 ## Features
 *   Installs and configures a secure OpenVPN server on
