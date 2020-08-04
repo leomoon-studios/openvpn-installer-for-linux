@@ -29,6 +29,8 @@ This script will setup a secure OpenVPN server on Ubuntu, Debian, CentOS, Fedora
 *   No IPv6 support
 
 ## Changelog
+*   3.02:
+    *   Fixed self-delete
 *   3.01:
     *   Minor improvements
     *   Minor bugfixes

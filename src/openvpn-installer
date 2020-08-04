@@ -19,7 +19,8 @@
 ############################################################################
 ########## INTERNAL VARIABLES ##############################################
 ############################################################################
-VER="3.01"
+VER="3.02"
+SCRIPTDIR=$PWD
 LINK="https://lms.to/lmovpn"
 CLRX=$(echo -e "\e[39m ") #color reset
 CLRE=$(echo -e "\e[31m") #color light red
@@ -760,6 +761,7 @@ verb 3" >> /etc/openvpn/server/common.ovpn
     #generate ovpnmanager
     echo '#!/bin/bash
 VER="'$VER'"
+SCRIPTDIR=$PWD
 CLRX=$(echo -e "\e[39m ") #color reset
 CLRE=$(echo -e "\e[31m") #color light red
 CLRS=$(echo -e "\e[32m") #color light green
@@ -967,7 +969,7 @@ function openvpnUninstall() {
         rm -rf /etc/openvpn
         rm -rf /usr/share/doc/openvpn*
         rm -f /etc/sysctl.d/20-openvpn.conf
-        rm -- "$0"
+        rm -- "$SCRIPTDIR/$0"
         echo "$CLRS $SYMS OpenVPN uninstalled successfully.$CLRX"
     else
         echo "$CLRI $SYMI OpenVPN uninstall canceled. Nothing was changed.$CLRX"
@@ -1022,7 +1024,7 @@ openvpnManage' > /usr/sbin/lmovpn
     echo "$CLRI $SYMI Please open port $PORT ${PROTOCOL^^} on your router."
     echo "$CLRI $SYMI Use ${CLRS}\"sudo lmovpn\"${CLRI} to manage your OpenVPN server.$CLRX"
     #cleanup
-    rm -- "$0"
+    rm -- "$SCRIPTDIR/$0"
 }
 
 init
