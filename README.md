@@ -76,7 +76,7 @@ Run it and follow the onscreen instructions:
 ```
 cd ~/ && sudo ./openvpn-installer
 ```
-After installation is done, use &ldquo;sudo lmovpn&rdquo; to manage your OpenVPN server.
+After installation is done, use &ldquo;sudo lmovpn&rdquo; to add new clients and manage your OpenVPN server.
 
 ## Silent Install
 You can also run this script silently with default options. The silent option will use the best encryption settings.
