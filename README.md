@@ -14,7 +14,7 @@ It is recommended to use the default encryption settings and only change port, p
     *   CentOS 8 x64, arm64
     *   Ubuntu >= 18.04 x86, x64, armf, arm64
 *   Automatic setup of firewall rules using iptables
-*   Has many customizable options
+*   Has many customization options
 *   Ability to define a FQDN with OpenVPN
 *   Includes silent and CLI install
 *   Includes silent and CLI management (&ldquo;sudo lmovpn&rdquo;):
@@ -57,7 +57,7 @@ It is recommended to use the default encryption settings and only change port, p
     *   KEY_CN will have the same name as client
     *   Added gateway detection. if not found, google dns will be used
     *   Automated key generation for both server and user
-    *   Added openvpn restart after revoking a license
+    *   Added OpenVPN restart after revoking a license
     *   Fixed “’link-mtu’ is used inconsistently” warning message
 *   1.54:
     *   Changed RSA to 2048
@@ -67,7 +67,7 @@ It is recommended to use the default encryption settings and only change port, p
     *   Updated Windows client URL
 
 ## Usage
-Download it using the command below and make it executeable:
+Download it using the command below and make it executable:
 ```
 curl -Ls https://raw.githubusercontent.com/leomoon-studios/openvpn-installer/master/src/openvpn-installer -O ~/openvpn-installer
 chmod +x ~/openvpn-installer
