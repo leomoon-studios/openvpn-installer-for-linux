@@ -76,7 +76,7 @@ Download it using ```curl``` and make it executable:
 curl -Ls https://raw.githubusercontent.com/leomoon-studios/openvpn-installer/master/src/openvpn-installer -O ~/openvpn-installer
 chmod +x ~/openvpn-installer
 ```
-OR download using ```wget``` and make it executable:
+OR download it using ```wget``` and make it executable:
 
 ```
 wget https://raw.githubusercontent.com/leomoon-studios/openvpn-installer/master/src/openvpn-installer -O ~/openvpn-installer
