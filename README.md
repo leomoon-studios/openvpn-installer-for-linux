@@ -80,6 +80,7 @@ OR download it using ```wget``` and make it executable:
 
 ```
 wget https://raw.githubusercontent.com/leomoon-studios/openvpn-installer/master/src/openvpn-installer -O ~/openvpn-installer
+chmod +x ~/openvpn-installer
 ```
 Run it and follow the onscreen instructions:
 ```
