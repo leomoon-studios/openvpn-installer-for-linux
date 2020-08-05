@@ -71,10 +71,15 @@ It is recommended to use the default encryption settings and only change port, p
     *   Updated Windows client URL
 
 ## Usage
-Download it using the command below and make it executable:
+Download it using ```curl``` and make it executable:
 ```
 curl -Ls https://raw.githubusercontent.com/leomoon-studios/openvpn-installer/master/src/openvpn-installer -O ~/openvpn-installer
 chmod +x ~/openvpn-installer
+```
+OR download using ```wget```:
+
+```
+wget https://raw.githubusercontent.com/leomoon-studios/openvpn-installer/master/src/openvpn-installer -O ~/openvpn-installer
 ```
 Run it and follow the onscreen instructions:
 ```
