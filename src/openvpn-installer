@@ -940,7 +940,11 @@ function openvpnUninstall() {
         #stop, disable and cleanup openvpn-server@server
         systemctl stop openvpn-server@server
         systemctl disable openvpn-server@server
-        rm /usr/lib/systemd/system/openvpn-server@.service
+        if [[ -e "/usr/lib/systemd/system/openvpn-server@.service" ]]; then
+            rm -f "/usr/lib/systemd/system/openvpn-server@.service"
+        elif [[ -e "/lib/systemd/system/openvpn-server@.service" ]]; then
+            rm -f "/lib/systemd/system/openvpn-server@.service"
+        fi
         #stop, disable and cleanup openvpn-iptables
         systemctl stop openvpn-iptables
         systemctl disable openvpn-iptables
@@ -973,7 +977,7 @@ function openvpnUninstall() {
         rm -rf /etc/openvpn
         rm -rf /usr/share/doc/openvpn*
         rm -f /etc/sysctl.d/20-openvpn.conf
-        rm -- "$SCRIPTDIR/$0"
+        rm -- "$(dirname $(readlink -f $0))/$(basename $0)";
         echo "$CLRS $SYMS OpenVPN uninstalled successfully.$CLRX"
     else
         echo "$CLRI $SYMI OpenVPN uninstall canceled. Nothing was changed.$CLRX"
@@ -1028,7 +1032,7 @@ openvpnManage' > /usr/sbin/lmovpn
     echo "$CLRI $SYMI Please open port $PORT ${PROTOCOL^^} on your router."
     echo "$CLRI $SYMI Use ${CLRS}\"sudo lmovpn\"${CLRI} to manage your OpenVPN server.$CLRX"
     #cleanup
-    rm -- "$SCRIPTDIR/$0"
+    rm -- "$(dirname $(readlink -f $0))/$(basename $0)";
 }
 
 init
