@@ -36,6 +36,7 @@ It is recommended to use the default encryption settings and only change port, p
 ## Changelog
 *   3.03:
     *   Fixed OpenVPN service path
+    *   Minor fix for OpenVPN Uninstall function
 *   3.02:
     *   Fixed self-delete
 *   3.01:
