@@ -181,7 +181,7 @@ SILENT=y DATACIPHER_TYPE=4 CERT_TYPE=2 sudo -E ./openvpn-installer
             *   1 = 2048 bits (default)
             *   2 = 3072 bits
             *   3 = 4096 bits
-*   HMAC_TYPE[1-2]
+*   HMAC_TYPE[1-3]
     *   1 = SHA-256 (default)
     *   2 = SHA-384
     *   3 = SHA-512
