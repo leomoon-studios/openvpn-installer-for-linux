@@ -23,9 +23,9 @@ VER="3.03"
 SCRIPTDIR=$PWD
 LINK="https://lms.to/lmovpn"
 CLRX=$(echo -e "\e[39m ") #color reset
-CLRE=$(echo -e "\e[31m") #color light red
-CLRS=$(echo -e "\e[32m") #color light green
-CLRC=$(echo -e "\e[33m") #color light yellow
+CLRE=$(echo -e "\e[31m") #color red
+CLRS=$(echo -e "\e[32m") #color green
+CLRC=$(echo -e "\e[33m") #color yellow
 CLRQ=$(echo -e "\e[34m") #color light blue
 CLRI=$(echo -e "\e[36m") #color cyan
 SYME=$(echo -e "[x]")
@@ -38,8 +38,8 @@ GATEWAY=$(ip -4 route ls | awk '/default/ { print $3 }')
 LANIP=$(ip addr | grep 'state UP' -A2 | tail -n1 | awk -F'[/ ]+' '{print $3}')
 WELCOMEMSG="$CLRI
  ####################################################################
- ######################## OpenVPN Installer #########################
- ######################## for Linux v$VER ###########################
+ ####### OpenVPN Installer ##########################################
+ ####### for Linux v$VER ############################################
  ####################################################################
  This script will setup a secure OpenVPN server.
 
