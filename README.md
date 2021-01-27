@@ -34,7 +34,7 @@ It is recommended to use the default encryption settings and only change port, p
 *   No IPv6 support
 
 ## Changelog
-*   3.04:
+*   3.04 2021-01-13:
     *   Increased sysctl priority
     *   Fixed adguard IPs
     *   Fixed key-direction from tls-crypt
