@@ -34,6 +34,10 @@ It is recommended to use the default encryption settings and only change port, p
 *   No IPv6 support
 
 ## Changelog
+*   3.04:
+    *   Increased sysctl priority
+    *   Fixed adguard IPs
+    *   Fixed key-direction from tls-crypt
 *   3.03:
     *   Fixed OpenVPN service path
     *   Minor fix for OpenVPN Uninstall function
