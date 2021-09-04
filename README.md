@@ -12,9 +12,12 @@ It is recommended to use the default encryption settings and only change port, p
     *   Arch Linux x64, arm64
     *   CentOS 7 x86, x64, armf, arm64
     *   CentOS 8 x64, arm64
-    *   Debian >= 9 x86, x64, armf arm64
-    *   Fedora >= 27 x64
-    *   Ubuntu >= 18.04 x86, x64, armf, arm64
+    *   Debian 9+ x86, x64, armf arm64
+    *   Fedora 27+ x64
+    *   Oracle Linux 8 x64
+    *   Rocky Linux 8 x64
+    *   Ubuntu 16.04 i386, x64
+    *   Ubuntu 18.04+ x86, x64, armf, arm64
 *   Automatic setup of firewall rules using iptables
 *   Has many customization options
 *   Ability to define a FQDN with OpenVPN
@@ -34,6 +37,12 @@ It is recommended to use the default encryption settings and only change port, p
 *   No IPv6 support
 
 ## Changelog
+*   3.05 2021-09-04:
+    *   Added compatibility with AlmaLinux 8
+    *   Added compatibility with Rocky Linux 8
+    *   Added compatibility with Oracle Linux 8
+    *   Fixed compatibility with RHEL and EPEL
+    *   Minor improvements
 *   3.04 2021-01-13:
     *   Increased sysctl priority
     *   Fixed adguard IPs
