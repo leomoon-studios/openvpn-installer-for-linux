@@ -226,6 +226,9 @@ MENU=5 sudo -E lmovpn
 *   Arch Linux x64, arm64
 *   CentOS 7 x86, x64, armf, arm64
 *   CentOS 8 x64, arm64
-*   Debian >= 9 x86, x64, armf arm64
-*   Fedora >= 27 x64
-*   Ubuntu >= 18.04 x86, x64, armf, arm64
+*   Debian 9+ x86, x64, armf arm64
+*   Fedora 27+ x64
+*   Oracle Linux 8 x64
+*   Rocky Linux 8 x64
+*   Ubuntu 16.04 i386, x64
+*   Ubuntu 18.04+ x86, x64, armf, arm64
