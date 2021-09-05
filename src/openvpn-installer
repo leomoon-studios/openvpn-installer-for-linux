@@ -717,6 +717,8 @@ verb 3" >> /etc/openvpn/server.conf
             fi
         fi
     fi
+    #disable firewalld if it exists (AlmaLinux 8 and Rocky Linux 8)
+    if [[ `systemctl is-active firewalld` ]]; then systemctl stop firewalld; systemctl disable firewalld; fi
     #setup openvpn-iptables service
     echo "[Unit]
 Before=network.target
