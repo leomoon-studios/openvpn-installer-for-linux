@@ -6,26 +6,25 @@
 ### ABOUT:
 ####### This script will setup a secure OpenVPN server on systems below:
 #######   Alma Linux 8
-#######   Amazon Linux 2 x64
-#######   Arch Linux x64, arm64
-#######   CentOS 7 x86, x64, armf, arm64
-#######   CentOS 8 x64, arm64
-#######   Devian 9+ i386, x64, armf, arm64
-#######   Fedora 27+ x64
-#######   Oracle Linux 8 x64
-#######   Rocky Linux 8 x64
-#######   Ubuntu 16.04 i386, x64
-#######   Ubuntu 18.04+ x86, x64, armf, arm64
+#######   Amazon Linux 2
+#######   Arch Linux
+#######   CentOS 7
+#######   CentOS >= 8
+#######   Devian >= 10
+#######   Fedora >= 35
+#######   Oracle Linux 8
+#######   Rocky Linux 8
+#######   Ubuntu >= 18.04
 ### AUTOHR:
 ####### Amin Babaeipanah
 ### USAGE:
-####### Run it using "sudo ./scriptName"
+####### Run it using "sudo ./openvpn-installer"
 ####### Follow on-screen instructions
 
 ############################################################################
 ########## INTERNAL VARIABLES ##############################################
 ############################################################################
-VER="3.05" #210827
+VER="3.1.0" #232201
 SCRIPTDIR="$(dirname $(readlink -f $0))"
 LINK="https://lms.to/lmovpn"
 CLRX=$(echo -e "\e[39m ") #color reset
@@ -50,17 +49,16 @@ WELCOMEMSG="$CLRI
  This script will setup a secure OpenVPN server.
 
  Supported distros:
-   Alma Linux 8 x64
-   Amazon Linux 2 x64
-   Arch Linux x64, arm64
-   CentOS 7 x86, x64, armf, arm64
-   CentOS 8 x64, arm64
-   Debian 9+ i386, x64, armf, arm64
-   Fedora 27+ x64
-   Oracle Linux 8 x64
-   Rocky Linux 8 x64
-   Ubuntu 16.04 i386, x64
-   Ubuntu 18.04+ x86, x64, armf, arm64
+   Alma Linux 8
+   Amazon Linux 2
+   Arch Linux
+   CentOS 7
+   CentOS >= 8
+   Devian >= 10
+   Fedora >= 35
+   Oracle Linux 8
+   Rocky Linux 8
+   Ubuntu >= 18.04
 
  Latest version and documentation at:
       $LINK
@@ -126,20 +124,20 @@ function osCheck() {
         fi
         if [[ $ID == "centos" || $ID == "rocky" || $ID == "almalinux" ]]; then
             OS="centos"
-            if [[ ! $VERSION_ID =~ (7|8) ]]; then
+            if [[ ! $VERSION_ID -lt 7 ]]; then
                 echo "$CLRE $SYME CentOS $VERSION_ID in not supported.$CLRX"
                 echo "$CLRE     This script only supports CentOS 7 and CentOS 8.$CLRX"
                 exit 1
             fi
         fi
-		if [[ $ID == "ol" ]]; then
-			OS="oracle"
-			if [[ ! $VERSION_ID =~ (8) ]]; then
-				echo "$CLRE $SYME Oracle Linux $VERSION_ID in not supported.$CLRX"
-				echo "$CLRE     This script only supports Oracle Linux 8.$CLRX"
-				exit 1
-			fi
-		fi
+        if [[ $ID == "ol" ]]; then
+            OS="oracle"
+            if [[ ! $VERSION_ID =~ (8) ]]; then
+                echo "$CLRE $SYME Oracle Linux $VERSION_ID in not supported.$CLRX"
+                echo "$CLRE     This script only supports Oracle Linux 8.$CLRX"
+                exit 1
+            fi
+        fi
         if [[ $ID == "amzn" ]]; then
             OS="amzn"
             if [[ $VERSION_ID != "2" ]]; then
@@ -425,7 +423,9 @@ function installMenu() {
     if [[ ! -z "$DOMAIN" ]]; then
         WANIP=$DOMAIN
     else
-        WANIP=$(curl -s "https://icanhazip.com")
+        if ! WANIP=$(curl -f --retry 5 --retry-connrefused -4 "https://icanhazip.com"); then
+            WANIP=$(dig -4 TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"')
+        fi
     fi
     echo "$CLRI $SYMI These are the options you chose:"
     echo "      Port: $PORT"
@@ -527,7 +527,9 @@ function installOvpn() {
     if [[ ! -z $DOMAIN ]]; then
         WANIP=$DOMAIN
     else
-        WANIP=$(curl -s "https://icanhazip.com")
+        if ! WANIP=$(curl -f --retry 5 --retry-connrefused -4 "https://icanhazip.com"); then
+            WANIP=$(dig -4 TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"')
+        fi
     fi
     #enable routing
     echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-openvpn.conf
@@ -541,9 +543,10 @@ function installOvpn() {
         elif [[ $OS == 'centos' ]]; then
             yum install -y epel-release
             yum install -y openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*'
-    	elif [[ $OS == 'oracle' ]]; then
-			yum install -y 'oracle-epel-release-*'
-			yum install -y openvpn iptables openssl wget ca-certificates curl tar 'policycoreutils-python*'
+        elif [[ $OS == 'oracle' ]]; then
+            yum install -y oracle-epel-release-el8
+            yum-config-manager --enable ol8_developer_EPEL
+            yum install -y openvpn iptables openssl wget ca-certificates curl tar policycoreutils-python-utils
         elif [[ $OS == 'amzn' ]]; then
             amazon-linux-extras install -y epel
             yum install -y openvpn iptables openssl wget ca-certificates curl
@@ -561,11 +564,11 @@ function installOvpn() {
     IPTABLESPATH=$(command -v iptables)
     #install easy-rsa
     if [[ ! -d /etc/openvpn/easy-rsa/ ]]; then
-        EASYRSAVER="3.0.7"
+        EASYRSAVER="3.1.2"
         #wget https://github.com/OpenVPN/easy-rsa/releases/download/v${EASYRSAVER}/EasyRSA-${EASYRSAVER}.tgz -O ~/easy-rsa.tgz
         EASYRSALINK="https://github.com/OpenVPN/easy-rsa/releases/download/v${EASYRSAVER}/EasyRSA-${EASYRSAVER}.tgz"
         mkdir /etc/openvpn/easy-rsa
-        { wget -qO- "$EASYRSALINK" 2>/dev/null || curl -sL "$EASYRSALINK" ; } | tar xz -C /etc/openvpn/easy-rsa/ --strip-components 1
+        { wget -qO- "$EASYRSALINK" 2>/dev/null || curl -sL "$EASYRSALINK" ; } | tar xz -C /etc/openvpn/easy-rsa/ --no-same-owner --strip-components 1
     fi
     if [[ ! -d /etc/openvpn/client ]]; then mkdir -p /etc/openvpn/client; fi
     cd /etc/openvpn/easy-rsa/
@@ -585,12 +588,12 @@ function installOvpn() {
     echo "$SERVER_NAME" > SERVER_NAME
     echo "set_var EASYRSA_REQ_CN $SERVER_CN" >>vars
     ./easyrsa init-pki
-    ./easyrsa --batch build-ca nopass #generate ca and key
+    ./easyrsa --batch --req-cn="$SERVER_CN" build-ca nopass #generate ca and key
     #generate dh only for none ec
     if [[ $DH_TYPE == "2" ]]; then
         openssl dhparam -out dh.pem $DH_SIZE
     fi
-    ./easyrsa build-server-full "$SERVER_NAME" nopass #generate server cert
+    ./easyrsa --batch build-server-full "$SERVER_NAME" nopass #generate server cert
     EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl #generate revoke cert
     #tls-crypt/tls-auth
     case $TLS_TYPE in
@@ -749,23 +752,19 @@ WantedBy=multi-user.target" > /etc/systemd/system/openvpn-iptables.service
         cp /usr/lib/systemd/system/openvpn-server@.service /etc/systemd/system/openvpn-server@.service
         sed -i 's|LimitNPROC|#LimitNPROC|' /etc/systemd/system/openvpn-server@.service #openvz fix
         sed -i 's|/etc/openvpn/server|/etc/openvpn|' /etc/systemd/system/openvpn-server@.service
-        #remove hardcoded fedora ciphers
-        if [[ $OS == "fedora" ]]; then
-            sed -i 's|--cipher AES-256-GCM --ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC:AES-128-CBC:BF-CBC||' /etc/systemd/system/openvpn-server@.service
-        fi
         systemctl daemon-reload
         systemctl enable openvpn-server@server
         systemctl restart openvpn-server@server
     elif [[ $OS == "ubuntu" ]] && [[ $VERSION_ID == "16.04" ]]; then
         systemctl enable openvpn
-		systemctl start openvpn
+        systemctl start openvpn
     else
         cp /lib/systemd/system/openvpn@.service /etc/systemd/system/openvpn@.service
         sed -i 's|LimitNPROC|#LimitNPROC|' /etc/systemd/system/openvpn@.service #openvz fix
         sed -i 's|/etc/openvpn/server|/etc/openvpn|' /etc/systemd/system/openvpn@.service
         systemctl daemon-reload
-		systemctl enable openvpn@server
-		systemctl restart openvpn@server
+        systemctl enable openvpn@server
+        systemctl restart openvpn@server
     fi
     #generate common.ovpn
     echo "client" > /etc/openvpn/common.ovpn
@@ -824,6 +823,14 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+if [[ $OS =~ (fedora|arch|centos|oracle) ]]; then
+    SERVICE_NAME="openvpn-server@.service"
+elif [[ $OS == "ubuntu" ]] && [[ $VERSION_ID == "16.04" ]]; then
+    SERVICE_NAME="openvpn"
+else
+    SERVICE_NAME="openvpn@server"
+fi
+
 function osCheck() {
     if [[ -e /etc/debian_version ]]; then #debian, rasbian, ubuntu
         OS="debian"
@@ -862,10 +869,10 @@ function clientAdd() {
         cd /etc/openvpn/easy-rsa/
         case $PASS in
         n)
-            ./easyrsa build-client-full "$CLIENT" nopass
+            ./easyrsa --batch build-client-full "$CLIENT" nopass
             ;;
         y)
-            ./easyrsa build-client-full "$CLIENT"
+            ./easyrsa --batch build-client-full "$CLIENT"
             ;;
         esac
         #detect tls-auth or tls-crypt
@@ -943,17 +950,17 @@ function clientRevoke() {
 }
 
 function openvpnLogs() {
-    journalctl -u openvpn-server@server -f -n 30
+    journalctl -u $SERVICE_NAME -f -n 30
 }
 
 function openvpnRestart () {
-    systemctl stop openvpn-server@server
+    systemctl stop $SERVICE_NAME
     systemctl stop openvpn-iptables
     systemctl start openvpn-iptables
-    systemctl start openvpn-server@server
-    if [[ ! "$(systemctl is-active openvpn-server@server)" = "active" ]]; then
+    systemctl start $SERVICE_NAME
+    if [[ ! "$(systemctl is-active $SERVICE_NAME)" == "active" ]]; then
         echo "$CLRE $SYME OpenVPN is not running.$CLRX"
-    elif [[ ! "$(systemctl is-active openvpn-iptables)" = "active" ]]; then
+    elif [[ ! "$(systemctl is-active openvpn-iptables)" == "active" ]]; then
         echo "$CLRE $SYME OpenVPN-iptables is not running.$CLRX"
     else
         echo "$CLRS $SYMS OpenVPN restarted successfully.$CLRX"
@@ -963,28 +970,21 @@ function openvpnRestart () {
 function openvpnUninstall() {
     osCheck
     until [[ $UNINSTALL  =~ (y|n) ]]; do
-        read -rp "$CLRQ $SYMQ What is the client name (no spaces, no special characters)?$CLRX" -e -i n  UNINSTALL
+        read -rp "$CLRQ $SYMQ Are you sure you want to uninstall OpenVPN server?$CLRX" -e -i n  UNINSTALL
         echo ""
     done
     if [[ $UNINSTALL == "y" ]]; then
         #get openvpn confs from server.conf
         PORT=$(grep "^port " /etc/openvpn/server.conf | cut -d " " -f 2)
         PROTOCOL=$(grep "^proto " /etc/openvpn/server.conf | cut -d " " -f 2)
-        #stop, disable and cleanup openvpn-server@server
-		if [[ $OS =~ (fedora|arch|centos|oracle) ]]; then
-			systemctl disable openvpn-server@server
-			systemctl stop openvpn-server@server
-			# Remove customised service
-			rm /etc/systemd/system/openvpn-server@.service
-		elif [[ $OS == "ubuntu" ]] && [[ $VERSION_ID == "16.04" ]]; then
-			systemctl disable openvpn
-			systemctl stop openvpn
-		else
-			systemctl disable openvpn@server
-			systemctl stop openvpn@server
-			# Remove customised service
-			rm /etc/systemd/system/openvpn\@.service
-		fi
+        #stop, disable and cleanup openvpn server service
+        systemctl stop $SERVICE_NAME
+        systemctl disable $SERVICE_NAME
+        if [[ $OS =~ (fedora|arch|centos|oracle) ]]; then
+            rm /etc/systemd/system/openvpn-server@.service
+        else
+            rm /etc/systemd/system/openvpn\@.service
+        fi
         #stop, disable and cleanup openvpn-iptables
         systemctl stop openvpn-iptables
         systemctl disable openvpn-iptables
