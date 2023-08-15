@@ -8,16 +8,6 @@ It is recommended to use the default encryption settings and only change port, p
 
 ## Features
 *   Installs and configures a secure OpenVPN server on
-    *   Amazon Linux 2 x64
-    *   Arch Linux x64, arm64
-    *   CentOS 7 x86, x64, armf, arm64
-    *   CentOS 8 x64, arm64
-    *   Debian 9+ x86, x64, armf arm64
-    *   Fedora 27+ x64
-    *   Oracle Linux 8 x64
-    *   Rocky Linux 8 x64
-    *   Ubuntu 16.04 i386, x64
-    *   Ubuntu 18.04+ x86, x64, armf, arm64
 *   Automatic setup of firewall rules using iptables
 *   Has many customization options
 *   Ability to define a FQDN with OpenVPN
@@ -37,6 +27,16 @@ It is recommended to use the default encryption settings and only change port, p
 *   No IPv6 support
 
 ## Changelog
+*   3.1.0 2023-08-15:
+    *   Enabled epel for Oracle Linux
+    *   Added retry to curl when getting WANIP
+    *   Added --no-same-owner when extracting easy-rsa
+    *   Added dns lookup if icanhazip fails
+    *   Added support for CentOS 9
+    *   Changed easyrsa from 3.0.7 to 3.1.2 with minor fixes
+    *   Removed unnecessary removal of hardcoded ciphers on Fedora
+    *   Fixed OpenVPN Uninstall option having wrong text
+    *   Fixed OpenVPN Uninstall option only supporting Ubuntu
 *   3.05 2021-09-04:
     *   Added compatibility with AlmaLinux 8
     *   Added compatibility with Rocky Linux 8
@@ -222,13 +222,13 @@ MENU=5 sudo -E lmovpn
 ```
 
 ## Compatibility
-*   Amazon Linux 2 x64
-*   Arch Linux x64, arm64
-*   CentOS 7 x86, x64, armf, arm64
-*   CentOS 8 x64, arm64
-*   Debian 9+ x86, x64, armf arm64
-*   Fedora 27+ x64
-*   Oracle Linux 8 x64
-*   Rocky Linux 8 x64
-*   Ubuntu 16.04 i386, x64
-*   Ubuntu 18.04+ x86, x64, armf, arm64
+*   Alma Linux 8
+*   Amazon Linux 2
+*   Arch Linux
+*   CentOS 7
+*   CentOS >= 8
+*   Devian >= 10
+*   Fedora >= 35
+*   Oracle Linux 8
+*   Rocky Linux 8
+*   Ubuntu >= 18.04
