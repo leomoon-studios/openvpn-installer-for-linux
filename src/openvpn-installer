@@ -124,7 +124,7 @@ function osCheck() {
         fi
         if [[ $ID == "centos" || $ID == "rocky" || $ID == "almalinux" ]]; then
             OS="centos"
-            if [[ ! $VERSION_ID -lt 7 ]]; then
+            if [[ ${VERSION_ID%.*} -lt 7 ]]; then
                 echo "$CLRE $SYME CentOS $VERSION_ID in not supported.$CLRX"
                 echo "$CLRE     This script only supports CentOS 7 and CentOS 8.$CLRX"
                 exit 1
