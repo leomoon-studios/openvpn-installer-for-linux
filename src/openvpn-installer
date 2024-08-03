@@ -588,12 +588,12 @@ function installOvpn() {
     echo "$SERVER_NAME" > SERVER_NAME
     echo "set_var EASYRSA_REQ_CN $SERVER_CN" >>vars
     ./easyrsa init-pki
-    ./easyrsa --batch --req-cn="$SERVER_CN" build-ca nopass #generate ca and key
+    EASYRSA_CA_EXPIRE=3650 ./easyrsa --batch --req-cn="$SERVER_CN" build-ca nopass #generate ca and key
     #generate dh only for none ec
     if [[ $DH_TYPE == "2" ]]; then
         openssl dhparam -out dh.pem $DH_SIZE
     fi
-    ./easyrsa --batch build-server-full "$SERVER_NAME" nopass #generate server cert
+    EASYRSA_CA_EXPIRE=3650 ./easyrsa --batch build-server-full "$SERVER_NAME" nopass #generate server cert
     EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl #generate revoke cert
     #tls-crypt/tls-auth
     case $TLS_TYPE in
@@ -869,10 +869,10 @@ function clientAdd() {
         cd /etc/openvpn/easy-rsa/
         case $PASS in
         n)
-            ./easyrsa --batch build-client-full "$CLIENT" nopass
+            EASYRSA_CA_EXPIRE=3650 ./easyrsa --batch build-client-full "$CLIENT" nopass
             ;;
         y)
-            ./easyrsa --batch build-client-full "$CLIENT"
+            EASYRSA_CA_EXPIRE=3650 ./easyrsa --batch build-client-full "$CLIENT"
             ;;
         esac
         #detect tls-auth or tls-crypt
