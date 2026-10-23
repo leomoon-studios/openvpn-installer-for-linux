@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-release:
+    name: Validate and release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Bash syntax
+        run: bash -n src/openvpn-installer
+
+      - name: Package release assets
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          package_name="openvpn-installer-${TAG}"
+          mkdir -p "dist/${package_name}"
+          install -m 0755 src/openvpn-installer "dist/${package_name}/openvpn-installer"
+          install -m 0644 README.md LICENSE "dist/${package_name}/"
+          tar --create --gzip --file "dist/${package_name}.tar.gz" --directory dist "${package_name}"
+          sha256sum "dist/${package_name}.tar.gz" > "dist/${package_name}.tar.gz.sha256"
+
+      - name: Build release notes from commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          revision_range="$TAG"
+          [[ -n "$previous_tag" ]] && revision_range="${previous_tag}..${TAG}"
+
+          {
+            printf 'Released: %s\n\n## Commits\n\n' "$(date -u +%F)"
+            commit_count=0
+            while IFS=$'\t' read -r sha subject author_name; do
+              [[ -n "$sha" ]] || continue
+              commit_url="https://github.com/${GITHUB_REPOSITORY}/commit/${sha}"
+              github_login="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq '.author.login // empty')"
+              if [[ -n "$github_login" ]]; then
+                author="[${github_login}](https://github.com/${github_login})"
+              else
+                author="$author_name"
+              fi
+              printf -- '- %s ([`%.7s`](%s) by %s)\n' "$subject" "$sha" "$commit_url" "$author"
+              ((commit_count += 1))
+            done < <(git log --format='%H%x09%s%x09%an' "$revision_range")
+            [[ "$commit_count" -gt 0 ]] || printf '_No commits found._\n'
+          } > dist/release-notes.md
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          package_name="openvpn-installer-${TAG}"
+          assets=("dist/${package_name}.tar.gz" "dist/${package_name}.tar.gz.sha256")
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --title "OpenVPN Installer for Linux ${TAG}" --notes-file dist/release-notes.md
+          else
+            gh release create "$TAG" "${assets[@]}" --title "OpenVPN Installer for Linux ${TAG}" --notes-file dist/release-notes.md --verify-tag
+          fi
